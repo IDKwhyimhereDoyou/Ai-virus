@@ -1,6 +1,6 @@
 pip install requests pillow pynput cryptography pywin32 pyinstaller pyperclip discord.py
 
-https://discord.com/api/webhooks/1453461921733939202/NpZz8x6PQZsh9GmJUIpPT4hK12PJEOm8V0y23nRTtBBbvdk_5c4iin076WJK3srQN2Px
+https://discord.com/api/webhooks/1453489886308073522/o9Bg9jBIWlj8nUGlYdMWHlLALtzIoIedkwtioTFgFPVX3SEo7WeolqoqEvZUbSA1W1JB
 
 MTQ1MzQ4Njg3ODk3MDg3MTk3Mg.GH7NCw.   78pH5WiB3W4wxqrK4Wenvz9KF34d-Dy8NoCN5sA
 
