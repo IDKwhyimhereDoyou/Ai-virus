@@ -12,7 +12,7 @@ https://pastebin.com/raw/m5U6eger
 
 pastebin key = mGiXZ4yQB6I4SArToIF1bs6v7fZPv9Fc
 
-gist = github_pat_11BLDDYKY03UNDKNisFEgJ_gI0xxpIHOOM  xnUrIixZPrVy8B6LkxvWdwN0bjjVxYYnYNZO65RL9jmBWnmQ
+gist = ghp_UoAoELhp85APCUUpe4d4Ty 4yXltOcK39Dof4
 
 gist id = 3bc0ef1bad059fdf147b42ea06bca7df/raw/2ba7b196ba08fd25d0d34cdcda8e88ca4a3c51bf
 
