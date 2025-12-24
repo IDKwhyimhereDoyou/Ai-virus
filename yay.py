@@ -6,7 +6,7 @@ MTQ1MzQ4Njg3ODk3MDg3MTk3Mg.GSV3BK.YJhYzr25_Tef s0VAH5VMeZnEPCvJXyKZ5JlNVU
 
 server id = 1264299849063333919
 
-Channel id = 1278004169134837770
+Channel id = 1264299849604661331
 
 https://pastebin.com/raw/m5U6eger
 
