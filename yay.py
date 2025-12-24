@@ -16,7 +16,9 @@ gist = ghp_UoAoELhp85APCUUpe4d4Ty 4yXltOcK39Dof4
 
 gist id = 3bc0ef1bad059fdf147b42ea06bca7df/raw/2ba7b196ba08fd25d0d34cdcda8e88ca4a3c51bf
 
-gist = https://gist.githubusercontent.com/IDKwhyimhereDoyou/3bc0ef1bad059fdf147b42ea06bca7df/raw/2ba7b196ba08fd25d0d34cdcda8e88ca4a3c51bf/commands.json
+gist 32 char = 3bc0ef1bad059fdf147b42ea06bca7df
+
+https://gist.githubusercontent.com/IDKwhyimhereDoyou/3bc0ef1bad059fdf147b42ea06bca7df/raw/commands.json
 
 import os
 import subprocess
