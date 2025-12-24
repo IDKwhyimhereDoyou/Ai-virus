@@ -10,7 +10,7 @@ Channel id = 1264299849604661331
 
 https://pastebin.com/raw/m5U6eger
 
-
+pastebin key = mGiXZ4yQB6I4SArToIF1bs6v7fZPv9Fc
 
 
 import os
